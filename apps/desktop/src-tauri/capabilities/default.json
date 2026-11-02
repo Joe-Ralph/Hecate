@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "identifier": "default-capability",
+  "description": "Least-privilege permissions for Hecate desktop client",
+  "windows": ["main", "quick-capture"],
+  "permissions": [
+    "core:default",
+    "sql:default",
+    "dialog:default",
+    "notification:default",
+    "global-shortcut:default",
+    "clipboard-manager:default",
+    "deep-link:default",
+    "store:default"
+  ]
+}

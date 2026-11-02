@@ -1,0 +1,36 @@
+{
+  "name": "hecate-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tana-style graph outliner PKM with Supertags and an AI Mini-Task coach in Terminal Brutalism",
+  "scripts": {
+    "dev": "pnpm --filter @hecate/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^6.1.2",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "sql.js": "^1.15.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.5.4",
+    "vite": "^8.3.5",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "@tiptap/extension-placeholder": "^3.32.2",
+    "@tiptap/react": "^3.32.2",
+    "@tiptap/starter-kit": "^3.32.2",
+    "lucide-react": "^1.66.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.16"
+  }
+}

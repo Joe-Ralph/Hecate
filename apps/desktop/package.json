@@ -1,0 +1,15 @@
+{
+  "name": "@hecate/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cargo --version >/dev/null 2>&1 && tauri dev || echo 'Cargo not installed'",
+    "build": "cargo --version >/dev/null 2>&1 && tauri build || echo 'Tauri native build skipped (Cargo not installed on host)'"
+  },
+  "dependencies": {
+    "@hecate/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
