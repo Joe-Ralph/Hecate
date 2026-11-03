@@ -24,6 +24,7 @@ export interface PanelState {
 export interface WorkspaceState {
   db: HecateDatabase | null;
   isInitialized: boolean;
+  initError: string | null;
   activePanels: PanelState[];
   activePanelIndex: number;
   todayNodeId: string | null;
@@ -74,6 +75,7 @@ export interface WorkspaceState {
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   db: null,
   isInitialized: false,
+  initError: null,
   activePanels: [],
   activePanelIndex: 0,
   todayNodeId: null,
@@ -90,44 +92,52 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   init: async () => {
     if (get().db) return;
 
-    const adapter = new MemoryStorageAdapter();
-    await adapter.init();
-    const db = await HecateDatabase.create(adapter);
+    try {
+      const adapter = new MemoryStorageAdapter();
+      await adapter.init();
+      const db = await HecateDatabase.create(adapter);
 
-    // Get or create today's node
-    const todayIso = formatDate(new Date());
-    const todayNode = await db.nodes.getOrCreateDayNode(todayIso);
+      // Get or create today's node
+      const todayIso = formatDate(new Date());
+      const todayNode = await db.nodes.getOrCreateDayNode(todayIso);
 
-    // Ensure sample initial content if today is empty
-    const children = await db.nodes.getChildren(todayNode.id);
-    if (children.length === 0) {
-      const taskTag = await db.tags.getTagByName('task');
-      const n1 = await db.nodes.create({
-        parent_id: todayNode.id,
-        content: 'Review Hecate System Architecture',
-        position: 'a0',
-      });
-      if (taskTag) {
-        await db.tags.applyTag(n1.id, taskTag.id);
+      // Ensure sample initial content if today is empty
+      const children = await db.nodes.getChildren(todayNode.id);
+      if (children.length === 0) {
+        const taskTag = await db.tags.getTagByName('task');
+        const n1 = await db.nodes.create({
+          parent_id: todayNode.id,
+          content: 'Review Hecate System Architecture',
+          position: 'a0',
+        });
+        if (taskTag) {
+          await db.tags.applyTag(n1.id, taskTag.id);
+        }
+
+        await db.nodes.create({
+          parent_id: todayNode.id,
+          content: 'Explore universal references using [[',
+          position: 'a1',
+        });
       }
 
-      await db.nodes.create({
-        parent_id: todayNode.id,
-        content: 'Explore universal references using [[',
-        position: 'a1',
+      const tasks = await db.ai.getTodayMiniTasks();
+
+      set({
+        db,
+        isInitialized: true,
+        initError: null,
+        todayNodeId: todayNode.id,
+        todayMiniTasks: tasks,
+        activePanels: [{ id: 'panel-0', nodeId: todayNode.id, view: 'list' }],
+        activePanelIndex: 0,
+      });
+    } catch (err: any) {
+      console.error('Failed to initialize Hecate database:', err);
+      set({
+        initError: err?.message || String(err),
       });
     }
-
-    const tasks = await db.ai.getTodayMiniTasks();
-
-    set({
-      db,
-      isInitialized: true,
-      todayNodeId: todayNode.id,
-      todayMiniTasks: tasks,
-      activePanels: [{ id: 'panel-0', nodeId: todayNode.id, view: 'list' }],
-      activePanelIndex: 0,
-    });
   },
 
   openNode: (nodeId: string, openInSidePanel = false) => {

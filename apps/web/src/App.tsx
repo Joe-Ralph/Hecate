@@ -61,6 +61,31 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  if (store.initError) {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-[#ffffff] font-sans p-6 select-none">
+        <div className="w-full max-w-md bg-[#111111] border border-[#cc3333] p-6 text-center">
+          <div className="text-[10px] font-mono uppercase tracking-[2px] text-[#cc3333] mb-2">
+            STORAGE INITIALIZATION ERROR
+          </div>
+          <div className="text-[14px] text-[#ffffff] font-medium mb-3">
+            Failed to initialize SQLite storage engine
+          </div>
+          <div className="text-[11px] font-mono text-[#888888] bg-[#161616] p-3 border border-[#222222] mb-4 text-left overflow-auto max-h-32 select-text">
+            {store.initError}
+          </div>
+          <button
+            type="button"
+            onClick={() => store.init()}
+            className="h-8 px-4 bg-[#ffffff] text-[#000000] text-[11px] font-medium uppercase tracking-[1.5px] hover:bg-[#e0e0e0] active:scale-98 cursor-pointer"
+          >
+            RETRY INITIALIZATION
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!store.isInitialized) {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-[#0a0a0a] text-[#ffffff] font-sans">
