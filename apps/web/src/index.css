@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source "../../../packages/ui/src";
+@source "../src";
 
 /* Inviolable Law 1: Absolute Zero Radius Everywhere */
 *,
