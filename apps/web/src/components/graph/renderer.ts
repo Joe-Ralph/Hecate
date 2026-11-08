@@ -23,7 +23,7 @@ export interface RenderState {
   hoveredId: string | null;
   selectedId: string | null;
   focusSet: Set<string> | null;
-  activeTag: string | null;
+  disabledTags: ReadonlySet<string>;
   searchMatches: Set<string>;
   stardust: Array<{ x: number; y: number; r: number; alpha: number }>;
   width: number;
@@ -53,6 +53,15 @@ export function nodeColor(n: { kind: string; tagNames: string[]; hasChildren: bo
   return DEFAULT_NODE;
 }
 
+export function hasDisabledTag(tagNames: string[], disabledTags: ReadonlySet<string>): boolean {
+  if (tagNames.length === 0) return disabledTags.has('other');
+  return tagNames.some((tag) => disabledTags.has(tag));
+}
+
+export function graphLabelFontSize(zoom: number): number {
+  return 11 / zoom;
+}
+
 function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, color);
@@ -63,7 +72,7 @@ function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, co
 export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
   const {
     data, positions, communities, transform, hoveredId, selectedId,
-    focusSet, activeTag, searchMatches, stardust, width, height, accent, textColor,
+    focusSet, disabledTags, searchMatches, stardust, width, height, accent, textColor,
   } = state;
 
   // Warm charcoal background (graph-specific per visual direction)
@@ -85,12 +94,19 @@ export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
   ctx.globalAlpha = 1;
 
   const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
+  const hoverHighlighted = new Set<string>();
+  if (hoveredId) {
+    hoverHighlighted.add(hoveredId);
+    for (const link of data.links) {
+      if (link.source === hoveredId) hoverHighlighted.add(link.target);
+      if (link.target === hoveredId) hoverHighlighted.add(link.source);
+    }
+  }
   const dimmed = (id: string): number => {
     if (focusSet && !focusSet.has(id)) return 0.05;
-    if (activeTag) {
-      const n = nodeById.get(id);
-      if (!n || !n.tagNames.includes(activeTag)) return 0.07;
-    }
+    if (hoverHighlighted.has(id)) return 1;
+    const n = nodeById.get(id);
+    if (n && hasDisabledTag(n.tagNames, disabledTags)) return 0.07;
     return 1;
   };
 
@@ -100,11 +116,11 @@ export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
     const b = positions.get(l.target);
     if (!a || !b) continue;
     const dim = Math.min(dimmed(l.source), dimmed(l.target));
-    if (dim < 0.2) continue;
+    const isHovered = hoveredId === l.source || hoveredId === l.target;
+    if (dim < 0.2 && !isHovered) continue;
 
     const crossCommunity =
       communities.communityOf.get(l.source) !== communities.communityOf.get(l.target);
-    const isHovered = hoveredId === l.source || hoveredId === l.target;
     const isSelected = selectedId === l.source || selectedId === l.target;
 
     let alpha = crossCommunity ? 0.2 : 0.11;
@@ -116,7 +132,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
       alpha = 0.75;
       color = nodeColor(nodeById.get(l.source)!, accent);
     }
-    ctx.globalAlpha = alpha * dim;
+    ctx.globalAlpha = alpha * (isHovered ? 1 : dim);
     ctx.strokeStyle = color;
     ctx.lineWidth = 0.65;
     ctx.beginPath();
@@ -169,7 +185,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
 
   if (zoomLevel === 'universe') {
     // Community labels at their centers of gravity
-    ctx.font = '11px "JetBrains Mono", monospace';
+    ctx.font = `${graphLabelFontSize(k)}px "JetBrains Mono", monospace`;
     ctx.textAlign = 'center';
     for (const c of communities.communities.slice(0, 12)) {
       const center = communitiesCenter(c.nodeIds, positions);
@@ -180,7 +196,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
     }
   }
 
-  ctx.font = '11px Inter, sans-serif';
+  ctx.font = `${graphLabelFontSize(k)}px Inter, sans-serif`;
   ctx.textAlign = 'center';
   let drawn = 0;
   for (const n of data.nodes) {
@@ -200,7 +216,7 @@ export function drawGraph(ctx: CanvasRenderingContext2D, state: RenderState) {
     const r = nodeRadius(n.degree);
     ctx.globalAlpha = n.hasChildren ? 0.95 : 0.7;
     ctx.fillStyle = textColor;
-    ctx.fillText(n.title.slice(0, 30), p.x, p.y + r + 12 / Math.sqrt(k));
+    ctx.fillText(n.title.slice(0, 30), p.x, p.y + r + 12 / k);
   }
   ctx.globalAlpha = 1;
   ctx.restore();

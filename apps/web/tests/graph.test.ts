@@ -3,6 +3,8 @@ import { MemoryStorageAdapter, HecateDatabase } from '@hecate/storage';
 import { buildGraphData, neighborhood, GraphData } from '../src/components/graph/layout';
 import { detectCommunities } from '../src/components/graph/communities';
 import { ForceEngine, nodeRadius } from '../src/components/graph/physics';
+import { interpolateTransform, zoomAtPoint } from '../src/components/graph/interaction';
+import { drawGraph, graphLabelFontSize, hasDisabledTag } from '../src/components/graph/renderer';
 
 describe('Graph data assembly', () => {
   let db: HecateDatabase;
@@ -178,4 +180,109 @@ describe('Community detection & multi-scale physics', () => {
       expect(Number.isFinite(p.y)).toBe(true);
     }
   }, 120000);
+});
+
+describe('Graph interactions', () => {
+  it('zooms toward the cursor without moving the anchored world point', () => {
+    const current = { x: 40, y: -20, k: 1.25 };
+    const cursor = { x: 320, y: 180 };
+    const world = {
+      x: (cursor.x - current.x) / current.k,
+      y: (cursor.y - current.y) / current.k,
+    };
+
+    const next = zoomAtPoint(current, -120, cursor.x, cursor.y);
+
+    expect(next.k).toBeGreaterThan(current.k);
+    expect(next.x + world.x * next.k).toBeCloseTo(cursor.x);
+    expect(next.y + world.y * next.k).toBeCloseTo(cursor.y);
+  });
+
+  it('interpolates zoom transforms instead of jumping directly to the target', () => {
+    const current = { x: 0, y: 0, k: 1 };
+    const target = { x: 100, y: -40, k: 3 };
+
+    expect(interpolateTransform(current, target, 0)).toEqual(current);
+    expect(interpolateTransform(current, target, 0.5)).toEqual({ x: 50, y: -20, k: 2 });
+    expect(interpolateTransform(current, target, 1)).toEqual(target);
+  });
+
+  it('keeps labels at the same screen size at every zoom level', () => {
+    for (const zoom of [0.1, 1, 3, 6]) {
+      expect(graphLabelFontSize(zoom) * zoom).toBeCloseTo(11);
+    }
+  });
+
+  it('dims nodes for each disabled tag without enabling an exclusive filter', () => {
+    const disabled = new Set(['task']);
+
+    expect(hasDisabledTag(['task'], disabled)).toBe(true);
+    expect(hasDisabledTag(['task', 'project'], disabled)).toBe(true);
+    expect(hasDisabledTag(['book'], disabled)).toBe(false);
+    expect(hasDisabledTag([], disabled)).toBe(false);
+
+    disabled.add('book');
+    expect(hasDisabledTag(['book'], disabled)).toBe(true);
+    disabled.delete('task');
+    expect(hasDisabledTag(['task'], disabled)).toBe(false);
+    expect(hasDisabledTag(['book'], disabled)).toBe(true);
+  });
+
+  it('toggles untagged nodes independently with the Other chip', () => {
+    const disabled = new Set(['other']);
+
+    expect(hasDisabledTag([], disabled)).toBe(true);
+    expect(hasDisabledTag(['task'], disabled)).toBe(false);
+
+    disabled.delete('other');
+    expect(hasDisabledTag([], disabled)).toBe(false);
+  });
+
+  it('shows links and their endpoints at full emphasis when the other endpoint is dimmed', () => {
+    const strokeAlphas: number[] = [];
+    const fillAlphas: number[] = [];
+    const ctx = {
+      globalAlpha: 1,
+      fillRect() {},
+      save() {},
+      translate() {},
+      scale() {},
+      beginPath() {},
+      arc() {},
+      fill() { fillAlphas.push(this.globalAlpha); },
+      moveTo() {},
+      lineTo() {},
+      stroke() { strokeAlphas.push(this.globalAlpha); },
+      restore() {},
+      createRadialGradient() { return { addColorStop() {} }; },
+    } as unknown as CanvasRenderingContext2D;
+    const data: GraphData = {
+      nodes: [
+        { id: 'task', title: 'Task', kind: 'content', tagIds: ['task'], tagNames: ['task'], hasChildren: false, degree: 1 },
+        { id: 'other', title: 'Other', kind: 'content', tagIds: [], tagNames: [], hasChildren: false, degree: 1 },
+      ],
+      links: [{ source: 'task', target: 'other', kind: 'reference' }],
+      childrenOf: new Map(),
+    };
+
+    drawGraph(ctx, {
+      data,
+      positions: new Map([['task', { x: 0, y: 0 }], ['other', { x: 100, y: 0 }]]),
+      communities: { communityOf: new Map([['task', 'c'], ['other', 'c']]), communities: [] },
+      transform: { x: 0, y: 0, k: 1 },
+      hoveredId: 'task',
+      selectedId: null,
+      focusSet: null,
+      disabledTags: new Set(['other']),
+      searchMatches: new Set(),
+      stardust: [],
+      width: 200,
+      height: 200,
+      accent: '#c4b2ff',
+      textColor: '#d8d2c8',
+    });
+
+    expect(strokeAlphas).toEqual([0.75]);
+    expect(fillAlphas).toEqual([0.35, 0.85, 0.85]);
+  });
 });

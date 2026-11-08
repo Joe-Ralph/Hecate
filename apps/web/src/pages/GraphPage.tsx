@@ -5,6 +5,7 @@ import { buildGraphData, neighborhood, GraphData, GraphNode } from '../component
 import { detectCommunities, CommunityMap } from '../components/graph/communities';
 import { ForceEngine, nodeRadius } from '../components/graph/physics';
 import { drawGraph, RenderState, Transform } from '../components/graph/renderer';
+import { interpolateTransform, zoomAtPoint } from '../components/graph/interaction';
 
 export const GraphPage: React.FC = () => {
   const store = useWorkspaceStore();
@@ -15,7 +16,7 @@ export const GraphPage: React.FC = () => {
   const [hovered, setHovered] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [disabledTags, setDisabledTags] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState('');
   const [sampleState, setSampleState] = useState<'idle' | 'loading' | 'done'>('idle');
   const [sampleXLState, setSampleXLState] = useState<'idle' | 'loading' | 'done'>('idle');
@@ -24,6 +25,9 @@ export const GraphPage: React.FC = () => {
 
   const engineRef = useRef<ForceEngine | null>(null);
   const communitiesRef = useRef<CommunityMap | null>(null);
+  const transformRef = useRef<Transform>({ x: 0, y: 0, k: 1 });
+  const zoomTargetRef = useRef<Transform | null>(null);
+  const zoomFrameRef = useRef<number | null>(null);
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -31,6 +35,52 @@ export const GraphPage: React.FC = () => {
     nodeId: string | null;
   } | null>(null);
   const stardustRef = useRef<RenderState['stardust']>([]);
+
+  const commitTransform = useCallback((next: Transform) => {
+    transformRef.current = next;
+    setTransform(next);
+  }, []);
+
+  const stopSmoothZoom = useCallback(() => {
+    if (zoomFrameRef.current !== null) cancelAnimationFrame(zoomFrameRef.current);
+    zoomFrameRef.current = null;
+    zoomTargetRef.current = null;
+  }, []);
+
+  const smoothZoom = useCallback((deltaY: number, x: number, y: number) => {
+    if (deltaY === 0) return;
+    const base = zoomTargetRef.current || transformRef.current;
+    zoomTargetRef.current = zoomAtPoint(base, deltaY, x, y);
+    if (zoomFrameRef.current !== null) return;
+
+    let previousTime = performance.now();
+    const animate = (now: number) => {
+      const target = zoomTargetRef.current;
+      if (!target) {
+        zoomFrameRef.current = null;
+        return;
+      }
+      const elapsed = Math.max(0, now - previousTime);
+      previousTime = now;
+      const amount = 1 - Math.exp(-elapsed / 60);
+      const current = transformRef.current;
+      const next = interpolateTransform(current, target, amount);
+      const settled =
+        Math.abs(target.k - next.k) < 0.0001 &&
+        Math.abs(target.x - next.x) < 0.01 &&
+        Math.abs(target.y - next.y) < 0.01;
+      commitTransform(settled ? target : next);
+      if (settled) {
+        zoomFrameRef.current = null;
+        zoomTargetRef.current = null;
+      } else {
+        zoomFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    zoomFrameRef.current = requestAnimationFrame(animate);
+  }, [commitTransform]);
+
+  useEffect(() => stopSmoothZoom, [stopSmoothZoom]);
 
   // Decorative star dust, generated once (not data)
   useEffect(() => {
@@ -76,7 +126,7 @@ export const GraphPage: React.FC = () => {
       hoveredId: hovered?.node.id || null,
       selectedId,
       focusSet: focusMode && selectedId && data ? neighborhood(data, selectedId, 2) : null,
-      activeTag,
+      disabledTags,
       searchMatches: search.trim()
         ? new Set(
             data.nodes
@@ -90,7 +140,7 @@ export const GraphPage: React.FC = () => {
       accent: css.getPropertyValue('--accent').trim() || '#c4b2ff',
       textColor: css.getPropertyValue('--text-secondary').trim() || '#d8d2c8',
     });
-  }, [data, transform, hovered, selectedId, focusMode, activeTag, search]);
+  }, [data, transform, hovered, selectedId, focusMode, disabledTags, search]);
 
   // Assemble graph data, then run the simulation live until it settles
   useEffect(() => {
@@ -153,9 +203,10 @@ export const GraphPage: React.FC = () => {
   // Redraw on interaction-state changes (no simulation restart)
   useEffect(() => {
     draw();
-  }, [transform, hovered, selectedId, focusMode, activeTag, search, draw]);
+  }, [transform, hovered, selectedId, focusMode, disabledTags, search, draw]);
 
   const fitToView = useCallback(() => {
+    stopSmoothZoom();
     const engine = engineRef.current;
     const container = containerRef.current;
     if (!engine || !container) return;
@@ -165,12 +216,12 @@ export const GraphPage: React.FC = () => {
     const bw = Math.max(1, maxX - minX);
     const bh = Math.max(1, maxY - minY);
     const k = Math.min(w / (bw + 120), h / (bh + 120), 1.2);
-    setTransform({
+    commitTransform({
       k,
       x: w / 2 - ((minX + maxX) / 2) * k,
       y: h / 2 - ((minY + maxY) / 2) * k,
     });
-  }, []);
+  }, [commitTransform, stopSmoothZoom]);
 
   const findNodeAt = (clientX: number, clientY: number): GraphNode | null => {
     const canvas = canvasRef.current;
@@ -295,18 +346,10 @@ export const GraphPage: React.FC = () => {
           onWheel={(e) => {
             e.preventDefault();
             const rect = canvasRef.current!.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-            const factor = Math.exp(-e.deltaY * 0.0012);
-            const newK = Math.min(6, Math.max(0.1, transform.k * factor));
-            const scale = newK / transform.k;
-            setTransform({
-              k: newK,
-              x: mx - (mx - transform.x) * scale,
-              y: my - (my - transform.y) * scale,
-            });
+            smoothZoom(e.deltaY, e.clientX - rect.left, e.clientY - rect.top);
           }}
           onMouseDown={(e) => {
+            stopSmoothZoom();
             const n = findNodeAt(e.clientX, e.clientY);
             dragRef.current = {
               startX: e.clientX,
@@ -334,7 +377,8 @@ export const GraphPage: React.FC = () => {
                 engine.tick();
                 draw();
               } else {
-                setTransform((t) => ({ ...t, x: t.x + e.movementX, y: t.y + e.movementY }));
+                const current = transformRef.current;
+                commitTransform({ ...current, x: current.x + e.movementX, y: current.y + e.movementY });
               }
               return;
             }
@@ -403,19 +447,26 @@ export const GraphPage: React.FC = () => {
           </div>
         )}
 
-        {/* Legend / filter chips */}
+        {/* Legend / tag toggles */}
         <div className="absolute left-4 bottom-4 p-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[10px] select-none">
           <div className="flex items-center space-x-3">
             {topTags.map(([name, count]) => (
               <button
                 key={name}
                 type="button"
+                aria-pressed={!disabledTags.has(name)}
+                title={`${disabledTags.has(name) ? 'Enable' : 'Disable'} #${name} highlighting`}
                 onClick={() => {
-                  setActiveTag(activeTag === name ? null : name);
+                  setDisabledTags((current) => {
+                    const next = new Set(current);
+                    if (next.has(name)) next.delete(name);
+                    else next.add(name);
+                    return next;
+                  });
                   engineRef.current?.reheat(0.15);
                 }}
                 className={`flex items-center space-x-1.5 text-[11px] cursor-pointer transition-opacity ${
-                  activeTag && activeTag !== name ? 'opacity-40' : ''
+                  disabledTags.has(name) ? 'opacity-40' : ''
                 }`}
               >
                 <span
@@ -432,10 +483,26 @@ export const GraphPage: React.FC = () => {
                 </span>
               </button>
             ))}
-            <span className="flex items-center space-x-1.5 text-[11px]">
+            <button
+              type="button"
+              aria-pressed={!disabledTags.has('other')}
+              title={`${disabledTags.has('other') ? 'Enable' : 'Disable'} other highlighting`}
+              onClick={() => {
+                setDisabledTags((current) => {
+                  const next = new Set(current);
+                  if (next.has('other')) next.delete('other');
+                  else next.add('other');
+                  return next;
+                });
+                engineRef.current?.reheat(0.15);
+              }}
+              className={`flex items-center space-x-1.5 text-[11px] cursor-pointer transition-opacity ${
+                disabledTags.has('other') ? 'opacity-40' : ''
+              }`}
+            >
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#9a948a' }} />
               <span className="text-[var(--text-secondary)]">other</span>
-            </span>
+            </button>
           </div>
           <div className="text-[9.5px] font-mono text-[var(--text-faint)] mt-2">
             NEBULA · COMMUNITIES FROM RELATIONSHIPS · SETTLES AT REST
