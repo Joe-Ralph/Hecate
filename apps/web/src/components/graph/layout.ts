@@ -1,8 +1,3 @@
-/**
- * Graph data assembly and neighborhood queries.
- * Layout lives in physics.ts, communities in communities.ts, drawing in renderer.ts.
- */
-
 import { HecateDatabase } from '@hecate/storage';
 
 export interface GraphNode {
@@ -26,6 +21,30 @@ export interface GraphData {
   links: GraphLink[];
   childrenOf: Map<string | null, string[]>;
 }
+
+export interface GraphFilterOptions {
+  search: string;
+  activeTag: string | null;
+  showOrphans: boolean;
+  showHierarchy: boolean;
+  localNodeId: string | null;
+  localDepth: number;
+  localBacklinks: boolean;
+  localForelinks: boolean;
+  localInterlinks: boolean;
+}
+
+export const DEFAULT_GRAPH_FILTERS: GraphFilterOptions = {
+  search: '',
+  activeTag: null,
+  showOrphans: true,
+  showHierarchy: true,
+  localNodeId: null,
+  localDepth: 2,
+  localBacklinks: true,
+  localForelinks: true,
+  localInterlinks: false,
+};
 
 export async function buildGraphData(db: HecateDatabase): Promise<GraphData> {
   const rows = await db.adapter.query<any>(
@@ -77,7 +96,145 @@ export async function buildGraphData(db: HecateDatabase): Promise<GraphData> {
   return { nodes, links, childrenOf };
 }
 
-/** All node ids within `hops` of `startId` (references + hierarchy). */
+function hierarchyLinks(data: GraphData): GraphLink[] {
+  const links: GraphLink[] = [];
+  for (const [parent, children] of data.childrenOf) {
+    if (!parent) continue;
+    for (const child of children) links.push({ source: parent, target: child, kind: 'hierarchy' });
+  }
+  return links;
+}
+
+export function graphEdges(data: GraphData, includeHierarchy = true): GraphLink[] {
+  return includeHierarchy ? [...data.links, ...hierarchyLinks(data)] : [...data.links];
+}
+
+function linkKey(link: GraphLink): string {
+  return `${link.kind}:${link.source}:${link.target}`;
+}
+
+export function filterGraphData(data: GraphData, options: GraphFilterOptions): GraphData {
+  const query = options.search.trim().toLowerCase();
+  const baseIds = new Set(
+    data.nodes
+      .filter((node) => {
+        if (query && !node.title.toLowerCase().includes(query)) return false;
+        if (options.activeTag && !node.tagNames.includes(options.activeTag)) return false;
+        return true;
+      })
+      .map((node) => node.id)
+  );
+  if (options.localNodeId && data.nodes.some((node) => node.id === options.localNodeId)) {
+    baseIds.add(options.localNodeId);
+  }
+
+  let visibleIds = baseIds;
+  let traversalEdges: Set<string> | null = null;
+  if (options.localNodeId && baseIds.has(options.localNodeId)) {
+    visibleIds = new Set([options.localNodeId]);
+    traversalEdges = new Set();
+    let frontier = [options.localNodeId];
+    const adjacency = new Map<string, Array<{ id: string; key: string }>>();
+    const add = (from: string, to: string, key: string) => {
+      if (!baseIds.has(from) || !baseIds.has(to)) return;
+      if (!adjacency.has(from)) adjacency.set(from, []);
+      adjacency.get(from)!.push({ id: to, key });
+    };
+    for (const link of data.links) {
+      const key = linkKey(link);
+      if (options.localForelinks) add(link.source, link.target, key);
+      if (options.localBacklinks) add(link.target, link.source, key);
+    }
+    if (options.showHierarchy) {
+      for (const link of hierarchyLinks(data)) {
+        const key = linkKey(link);
+        add(link.source, link.target, key);
+        add(link.target, link.source, key);
+      }
+    }
+    for (let depth = 0; depth < Math.max(1, Math.min(5, options.localDepth)); depth++) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const neighbor of adjacency.get(id) || []) {
+          if (visibleIds.has(neighbor.id)) continue;
+          visibleIds.add(neighbor.id);
+          traversalEdges.add(neighbor.key);
+          next.push(neighbor.id);
+        }
+      }
+      frontier = next;
+      if (frontier.length === 0) break;
+    }
+  }
+
+  const keepEdge = (link: GraphLink) => {
+    if (!visibleIds.has(link.source) || !visibleIds.has(link.target)) return false;
+    return !traversalEdges || options.localInterlinks || traversalEdges.has(linkKey(link));
+  };
+  const links = data.links.filter(keepEdge);
+  const childrenOf = new Map<string | null, string[]>();
+  for (const node of data.nodes) {
+    if (!visibleIds.has(node.id)) continue;
+    if (!childrenOf.has(null)) childrenOf.set(null, []);
+    childrenOf.get(null)!.push(node.id);
+  }
+  if (options.showHierarchy) {
+    for (const [parent, children] of data.childrenOf) {
+      if (!parent) continue;
+      for (const child of children) {
+        const link = { source: parent, target: child, kind: 'hierarchy' as const };
+        if (!keepEdge(link)) continue;
+        if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+        childrenOf.get(parent)!.push(child);
+        const roots = childrenOf.get(null);
+        if (roots) childrenOf.set(null, roots.filter((id) => id !== child));
+      }
+    }
+  }
+
+  if (!options.showOrphans) {
+    const connected = new Set<string>();
+    for (const link of graphEdges({ nodes: [], links, childrenOf }, options.showHierarchy)) {
+      if (link.source !== link.target) {
+        connected.add(link.source);
+        connected.add(link.target);
+      }
+    }
+    for (const id of [...visibleIds]) {
+      if (!connected.has(id)) visibleIds.delete(id);
+    }
+    return pruneToIds(data, visibleIds, links, childrenOf);
+  }
+
+  return pruneToIds(data, visibleIds, links, childrenOf);
+}
+
+function pruneToIds(
+  data: GraphData,
+  visibleIds: Set<string>,
+  links: GraphLink[],
+  childrenOf: Map<string | null, string[]>
+): GraphData {
+  const degree = new Map<string, number>();
+  for (const link of links) {
+    degree.set(link.source, (degree.get(link.source) || 0) + 1);
+    degree.set(link.target, (degree.get(link.target) || 0) + 1);
+  }
+  const nodes = data.nodes
+    .filter((node) => visibleIds.has(node.id))
+    .map((node) => ({ ...node, degree: degree.get(node.id) || 0 }));
+  const prunedChildren = new Map<string | null, string[]>();
+  for (const [parent, children] of childrenOf) {
+    const visibleChildren = children.filter((id) => visibleIds.has(id));
+    if (visibleChildren.length > 0 || parent === null) prunedChildren.set(parent, visibleChildren);
+  }
+  return {
+    nodes,
+    links: links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
+    childrenOf: prunedChildren,
+  };
+}
+
 export function neighborhood(data: GraphData, startId: string, hops: number): Set<string> {
   const adj = new Map<string, Set<string>>();
   const add = (a: string, b: string) => {
@@ -86,11 +243,7 @@ export function neighborhood(data: GraphData, startId: string, hops: number): Se
     adj.get(a)!.add(b);
     adj.get(b)!.add(a);
   };
-  for (const l of data.links) add(l.source, l.target);
-  for (const [parent, children] of data.childrenOf) {
-    if (!parent) continue;
-    for (const c of children) add(parent, c);
-  }
+  for (const l of graphEdges(data)) add(l.source, l.target);
 
   const visited = new Set<string>([startId]);
   let frontier = [startId];

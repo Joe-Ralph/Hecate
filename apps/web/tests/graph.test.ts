@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageAdapter, HecateDatabase } from '@hecate/storage';
-import { buildGraphData, neighborhood, GraphData } from '../src/components/graph/layout';
+import { buildGraphData, neighborhood, GraphData, DEFAULT_GRAPH_FILTERS, filterGraphData } from '../src/components/graph/layout';
 import { detectCommunities } from '../src/components/graph/communities';
 import { ForceEngine, nodeRadius } from '../src/components/graph/physics';
 
@@ -178,4 +178,89 @@ describe('Community detection & multi-scale physics', () => {
       expect(Number.isFinite(p.y)).toBe(true);
     }
   }, 120000);
+});
+
+describe('Graph filtering and incremental layout', () => {
+  const nodes = ['a', 'b', 'c', 'orphan'].map((id) => ({
+    id, title: id, kind: 'content', tagIds: [], tagNames: id === 'a' ? ['task'] : [], hasChildren: false, degree: 0,
+  }));
+  const data: GraphData = {
+    nodes,
+    links: [
+      { source: 'a', target: 'b', kind: 'reference' },
+      { source: 'c', target: 'a', kind: 'reference' },
+      { source: 'b', target: 'c', kind: 'reference' },
+    ],
+    childrenOf: new Map([[null, ['a', 'b', 'c', 'orphan']]]),
+  };
+
+  it('filters titles and supertags', () => {
+    const byTitle = filterGraphData(data, { ...DEFAULT_GRAPH_FILTERS, search: 'orphan' });
+    expect(byTitle.nodes.map((node) => node.id)).toEqual(['orphan']);
+    const byTag = filterGraphData(data, { ...DEFAULT_GRAPH_FILTERS, activeTag: 'task' });
+    expect(byTag.nodes.map((node) => node.id)).toEqual(['a']);
+  });
+
+  it('honors local forelink and backlink direction', () => {
+    const forelinks = filterGraphData(data, {
+      ...DEFAULT_GRAPH_FILTERS,
+      showHierarchy: false,
+      localNodeId: 'a',
+      localDepth: 1,
+      localBacklinks: false,
+      localForelinks: true,
+    });
+    expect(new Set(forelinks.nodes.map((node) => node.id))).toEqual(new Set(['a', 'b']));
+    const backlinks = filterGraphData(data, {
+      ...DEFAULT_GRAPH_FILTERS,
+      showHierarchy: false,
+      localNodeId: 'a',
+      localDepth: 1,
+      localBacklinks: true,
+      localForelinks: false,
+    });
+    expect(new Set(backlinks.nodes.map((node) => node.id))).toEqual(new Set(['a', 'c']));
+  });
+
+  it('controls links between local neighbors', () => {
+    const options = {
+      ...DEFAULT_GRAPH_FILTERS,
+      showHierarchy: false,
+      localNodeId: 'a',
+      localDepth: 1,
+      localBacklinks: true,
+      localForelinks: true,
+    };
+    const tree = filterGraphData(data, { ...options, localInterlinks: false });
+    expect(tree.links.some((link) => link.source === 'b' && link.target === 'c')).toBe(false);
+    const interlinked = filterGraphData(data, { ...options, localInterlinks: true });
+    expect(interlinked.links.some((link) => link.source === 'b' && link.target === 'c')).toBe(true);
+  });
+
+  it('prunes orphans while retaining hierarchy-connected nodes', () => {
+    const hierarchical: GraphData = {
+      nodes,
+      links: [],
+      childrenOf: new Map([[null, ['a', 'orphan']], ['a', ['b']]]),
+    };
+    const filtered = filterGraphData(hierarchical, { ...DEFAULT_GRAPH_FILTERS, showOrphans: false });
+    expect(new Set(filtered.nodes.map((node) => node.id))).toEqual(new Set(['a', 'b']));
+  });
+
+  it('preserves existing coordinates and seeds added nodes finitely', () => {
+    const initial = syntheticTwoClusters();
+    const engine = new ForceEngine(initial, detectCommunities(initial));
+    for (let i = 0; i < 20; i++) engine.tick();
+    const state = engine.snapshotState();
+    const next: GraphData = {
+      nodes: [...initial.nodes, { id: 'new', title: 'new', kind: 'content', tagIds: [], tagNames: [], hasChildren: false, degree: 1 }],
+      links: [...initial.links, { source: 'a0', target: 'new', kind: 'reference' }],
+      childrenOf: new Map([...initial.childrenOf, [null, [...(initial.childrenOf.get(null) || []), 'new']]]),
+    };
+    const updated = new ForceEngine(next, detectCommunities(next), state);
+    expect(updated.positions.get('a3')).toEqual({ x: state.get('a3')!.x, y: state.get('a3')!.y });
+    for (let i = 0; i < 5; i++) updated.tick();
+    expect(Number.isFinite(updated.positions.get('new')!.x)).toBe(true);
+    expect(Number.isFinite(updated.positions.get('new')!.y)).toBe(true);
+  });
 });

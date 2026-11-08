@@ -26,7 +26,7 @@ pnpm -r test    # vitest suites (storage, query, commands, import/export, …)
 - **AI coach**: opt-in consent, digest privacy controls, mini-task generation with timers and feedback loop, reflections/rollups, weekly stats, optional daily notification.
 - **Theming & PWA**: warm dark / warm light / system theme, accent color, UI font scale, offline app shell via service worker.
 - **Routing**: hash-based routes (`#/today`, `#/panels`, `#/library`, `#/calendar`, `#/graph`, `#/reflections`, `#/trash`, `#/settings`) so browser Back/Forward navigates inside the app.
-- **Graph view**: Nebula-style 2D graph with multi-scale force physics (link attraction, repulsion, collision, community attraction/separation), graph-based community detection (label propagation), logarithmic node sizes, thin low-opacity edges, star dust, zoom-progressive labels, settle-and-pause simulation with reheat on interaction, node dragging, focus mode, and a one-click sample dataset. Layers: `layout.ts` (data), `communities.ts`, `physics.ts`, `renderer.ts`, `GraphPage.tsx` (interaction).
+- **Graph view**: Nebula-style 2D graph with worker-based multi-scale force physics, incremental position-preserving updates, graph-based community detection, smooth pan/pinch/keyboard zoom, viewport culling, and render-on-demand sleep. Semantic zoom moves from clickable community meta-nodes to hubs and detailed node labels; local neighborhoods, supertag/orphan filters, display controls, and force tuning persist through settings. Layers: `layout.ts` (data/filtering), `communities.ts`, `physics.ts` + `graphWorker.ts`, `camera.ts`, `model.ts`, `renderer.ts`, `controller.ts`, and `GraphPage.tsx` / `GraphControls.tsx` (UI).
 
 ## Storage engine: `@sqlite.org/sqlite-wasm`
 
