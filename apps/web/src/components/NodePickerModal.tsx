@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { NodeRecord } from '@hecate/core';
 import { useWorkspaceStore } from '../store/workspaceStore';
 
@@ -34,29 +34,32 @@ export const NodePickerModal: React.FC<NodePickerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-28 bg-[#0a0a0a]/70 backdrop-blur-xs p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-28 bg-black/60 backdrop-blur-xs p-4"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-lg bg-[#0a0a0a] border border-[#333333] shadow-2xl text-[#ffffff] font-sans"
+        className="w-full max-w-lg bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-[10px] shadow-[0_12px_40px_rgba(0,0,0,0.5)] text-[var(--text-primary)] font-sans overflow-hidden animate-in fade-in zoom-in-95 duration-120"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-3 border-b border-[#222222] flex items-center space-x-2 bg-[#111111]">
-          <Search className="w-4 h-4 text-[#888888]" strokeWidth={2} />
+        <div className="p-3 border-b border-[var(--border-subtle)] flex items-center space-x-2.5 bg-[var(--bg-surface)]">
+          <Search className="w-4 h-4 text-[var(--text-muted)]" strokeWidth={2} />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Reference a node..."
-            className="flex-1 bg-transparent text-[#ffffff] text-[13px] focus:outline-none font-mono"
+            className="flex-1 bg-transparent text-[var(--text-primary)] text-[13px] focus:outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Escape') onClose();
             }}
           />
         </div>
 
-        <div className="max-h-60 overflow-y-auto p-1 space-y-0.5">
+        <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
           {results.length === 0 ? (
-            <div className="py-6 text-center text-[#555555] font-mono text-[11px] uppercase tracking-[1px]">
+            <div className="py-6 text-center text-[var(--text-muted)] font-mono text-[11px] uppercase tracking-wider">
               No matching nodes found
             </div>
           ) : (
@@ -67,12 +70,12 @@ export const NodePickerModal: React.FC<NodePickerModalProps> = ({
                   onSelectNode(r.id, r.content);
                   onClose();
                 }}
-                className="px-3 py-2 hover:bg-[#161616] cursor-pointer flex items-center justify-between text-[13px]"
+                className="px-3 py-2 rounded-[6px] hover:bg-[var(--bg-hover)] cursor-pointer flex items-center justify-between text-[13px] transition-colors"
               >
-                <span className="font-medium text-[#ffffff] truncate">
+                <span className="font-medium text-[var(--text-primary)] truncate">
                   {r.content || 'Untitled'}
                 </span>
-                <span className="text-[10px] font-mono text-[#555555] uppercase">
+                <span className="text-[11px] font-mono text-[var(--text-faint)] uppercase">
                   {r.kind}
                 </span>
               </div>

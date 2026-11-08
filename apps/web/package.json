@@ -12,17 +12,21 @@
   "dependencies": {
     "@hecate/ai": "workspace:*",
     "@hecate/core": "workspace:*",
+    "@hecate/reflection": "workspace:*",
     "@hecate/storage": "workspace:*",
     "@hecate/ui": "workspace:*",
     "@tiptap/extension-placeholder": "^3.32.2",
     "@tiptap/react": "^3.32.2",
     "@tiptap/starter-kit": "^3.32.2",
+    "d3-force": "^3.0.1",
+    "date-fns": "^4.4.0",
     "lucide-react": "^1.66.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@types/d3-force": "^3.0.10",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",

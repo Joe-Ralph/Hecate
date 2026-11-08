@@ -110,4 +110,85 @@ describe('Hecate Database & Storage Layer', () => {
     expect(results.length).toBe(1);
     expect(results[0].id).toBe(node1.id);
   });
+
+  it('permanently deletes untitled entry with no content and does not store in trash', async () => {
+    // 1. Create an empty untitled node
+    const emptyNode = await db.nodes.create({ content: '' });
+    const untitledNode = await db.nodes.create({ content: 'Untitled' });
+
+    // 2. Delete them
+    const res1 = await db.nodes.deleteNode(emptyNode.id);
+    expect(res1.permanentlyDeleted).toBe(true);
+
+    const res2 = await db.nodes.deleteNode(untitledNode.id);
+    expect(res2.permanentlyDeleted).toBe(true);
+
+    // 3. Verify neither is in trash
+    const trash = await db.nodes.getTrash();
+    expect(trash.some((n) => n.id === emptyNode.id)).toBe(false);
+    expect(trash.some((n) => n.id === untitledNode.id)).toBe(false);
+
+    // 4. Verify completely gone from database
+    const raw1 = await db.nodes.getNodeRaw(emptyNode.id);
+    expect(raw1).toBeNull();
+    const raw2 = await db.nodes.getNodeRaw(untitledNode.id);
+    expect(raw2).toBeNull();
+  });
+
+  it('soft-deletes nodes with content to trash and allows permanent deletion from trash', async () => {
+    // 1. Create node with content
+    const node = await db.nodes.create({ content: 'Important Architecture Note' });
+
+    // 2. Delete it
+    const res = await db.nodes.deleteNode(node.id);
+    expect(res.permanentlyDeleted).toBe(false);
+
+    // 3. Verify it is present in trash
+    let trash = await db.nodes.getTrash();
+    expect(trash.some((n) => n.id === node.id)).toBe(true);
+
+    // 4. Permanently delete from trash
+    await db.nodes.permanentlyDeleteNode(node.id);
+
+    // 5. Verify gone from trash and database
+    trash = await db.nodes.getTrash();
+    expect(trash.some((n) => n.id === node.id)).toBe(false);
+
+    const raw = await db.nodes.getNodeRaw(node.id);
+    expect(raw).toBeNull();
+  });
+
+  it('removes template fields when tag is removed from node', async () => {
+    // 1. Create a note and apply #task
+    const note = await db.nodes.create({ content: 'Launch Hecate v1.0' });
+    const taskTag = await db.tags.getTagByName('task');
+    expect(taskTag).toBeDefined();
+
+    await db.tags.applyTag(note.id, taskTag!.id);
+
+    // Verify fields were injected
+    const childrenWithTag = await db.nodes.getChildren(note.id);
+    const fieldChildren = childrenWithTag.filter((c) => c.kind === 'field');
+    expect(fieldChildren.length).toBeGreaterThanOrEqual(2); // Status, Due, Priority
+
+    // Verify tag is attached
+    const attachedTags = await db.tags.getTagsForNode(note.id);
+    expect(attachedTags.some((t) => t.id === taskTag!.id)).toBe(true);
+
+    // 2. Remove tag
+    await db.tags.removeTag(note.id, taskTag!.id);
+
+    // Verify tag is no longer attached
+    const afterTags = await db.tags.getTagsForNode(note.id);
+    expect(afterTags.some((t) => t.id === taskTag!.id)).toBe(false);
+
+    // Verify introduced template fields are removed (REQ-3.2: only EMPTY injected
+    // fields are removed; the auto-initialized Status = 'Inbox' has a value and stays)
+    const childrenAfterRemove = await db.nodes.getChildren(note.id);
+    const fieldChildrenAfter = childrenAfterRemove.filter((c) => c.kind === 'field');
+    expect(fieldChildrenAfter.length).toBe(1);
+
+    const remainingValues = await db.nodes.getChildren(fieldChildrenAfter[0].id);
+    expect(remainingValues[0]?.content).toBe('Inbox');
+  });
 });

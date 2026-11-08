@@ -1,53 +1,19 @@
 /**
- * Memory & Local-First IndexedDB Storage Adapter using sql.js
- * In-memory SQLite engine with automatic local persistence and resilient multi-strategy loading.
+ * Memory & Local-First IndexedDB Storage Adapter using @sqlite.org/sqlite-wasm
+ * Official SQLite WASM build (includes FTS5) with automatic local persistence.
  */
 
-import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import initSqlite, { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import { StorageAdapter } from './storage-adapter';
 
-let sqlJsPromise: Promise<SqlJsStatic> | null = null;
+let sqlitePromise: Promise<Sqlite3Static> | null = null;
 
-async function getSqlJs(): Promise<SqlJsStatic> {
-  if (sqlJsPromise) return sqlJsPromise;
-
-  sqlJsPromise = (async () => {
-    if (typeof window !== 'undefined') {
-      // Strategy 1: Local /sql-wasm.wasm served by Vite/PWA
-      try {
-        const sql = await initSqlJs({
-          locateFile: (file) => `/${file}`,
-        });
-        return sql;
-      } catch (err1) {
-        console.warn('Local /sql-wasm.wasm load failed, trying CDN fallback...', err1);
-      }
-
-      // Strategy 2: CDN fallback
-      try {
-        const sql = await initSqlJs({
-          locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/${file}`,
-        });
-        return sql;
-      } catch (err2) {
-        console.warn('CDN wasm load failed, attempting embedded inline wasm...', err2);
-      }
-
-      // Strategy 3: Inline WASM bundled inside JS (zero network needed)
-      try {
-        const inlineModule = (await import('sql.js/dist/sql-wasm-inline.js' as any)).default;
-        const sql = await inlineModule();
-        return sql;
-      } catch (err3) {
-        console.warn('Inline wasm fallback failed, falling back to default initSqlJs:', err3);
-      }
-    }
-
-    // Default Node / standard loader
-    return await initSqlJs();
-  })();
-
-  return sqlJsPromise;
+async function getSqlite(): Promise<Sqlite3Static> {
+  if (sqlitePromise) return sqlitePromise;
+  // The browser build resolves sqlite3.wasm via `new URL(..., import.meta.url)`,
+  // which Vite emits as a build asset automatically.
+  sqlitePromise = initSqlite();
+  return sqlitePromise;
 }
 
 const IDB_NAME = 'hecate_pkm';
@@ -113,11 +79,13 @@ async function saveToIndexedDb(data: Uint8Array): Promise<void> {
 }
 
 export class MemoryStorageAdapter implements StorageAdapter {
+  private sqlite: Sqlite3Static | null = null;
   private db: Database | null = null;
   private saveTimeout: any = null;
 
   async init(initialBinary?: Uint8Array): Promise<void> {
-    const SQL = await getSqlJs();
+    this.sqlite = await getSqlite();
+    this.db = new this.sqlite.oo1.DB(':memory:');
 
     let binaryToLoad = initialBinary;
     if (!binaryToLoad && typeof window !== 'undefined') {
@@ -128,9 +96,19 @@ export class MemoryStorageAdapter implements StorageAdapter {
     }
 
     if (binaryToLoad) {
-      this.db = new SQL.Database(binaryToLoad);
-    } else {
-      this.db = new SQL.Database();
+      const capi = this.sqlite.capi;
+      const ptr = this.sqlite.wasm.allocFromTypedArray(binaryToLoad);
+      const rc = capi.sqlite3_deserialize(
+        this.db.pointer!,
+        'main',
+        ptr,
+        binaryToLoad.byteLength,
+        binaryToLoad.byteLength,
+        capi.SQLITE_DESERIALIZE_FREEONCLOSE | capi.SQLITE_DESERIALIZE_RESIZEABLE
+      );
+      if (rc !== capi.SQLITE_OK) {
+        throw new Error(`Failed to load persisted database (sqlite3_deserialize rc=${rc})`);
+      }
     }
   }
 
@@ -147,7 +125,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
     this.saveTimeout = setTimeout(async () => {
       if (this.db) {
         try {
-          const binary = this.db.export();
+          const binary = await this.exportBinary();
           await saveToIndexedDb(binary);
         } catch (e) {
           console.warn('Failed to auto-persist to IndexedDB:', e);
@@ -158,54 +136,38 @@ export class MemoryStorageAdapter implements StorageAdapter {
 
   async execute(sql: string, params: any[] = []): Promise<void> {
     const db = this.ensureDb();
-    if (params.length === 0) {
-      db.run(sql);
-      this.schedulePersist();
-      return;
-    }
-    const stmt = db.prepare(sql);
-    try {
-      stmt.run(params);
-      this.schedulePersist();
-    } finally {
-      stmt.free();
-    }
+    db.exec({ sql, bind: params });
+    this.schedulePersist();
   }
 
   async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     const db = this.ensureDb();
-    const results: T[] = [];
-    const stmt = db.prepare(sql);
-    try {
-      if (params.length > 0) {
-        stmt.bind(params);
-      }
-      while (stmt.step()) {
-        results.push(stmt.getAsObject() as T);
-      }
-    } finally {
-      stmt.free();
-    }
-    return results;
+    return db.exec({
+      sql,
+      bind: params,
+      rowMode: 'object',
+      returnValue: 'resultRows',
+    }) as T[];
   }
 
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     const db = this.ensureDb();
-    db.run('BEGIN TRANSACTION');
+    db.exec('BEGIN TRANSACTION');
     try {
       const result = await fn();
-      db.run('COMMIT');
+      db.exec('COMMIT');
       this.schedulePersist();
       return result;
     } catch (err) {
-      db.run('ROLLBACK');
+      db.exec('ROLLBACK');
       throw err;
     }
   }
 
   async exportBinary(): Promise<Uint8Array> {
     const db = this.ensureDb();
-    return db.export();
+    if (!this.sqlite) throw new Error('SQLite not initialized');
+    return this.sqlite.capi.sqlite3_js_db_export(db);
   }
 
   async close(): Promise<void> {

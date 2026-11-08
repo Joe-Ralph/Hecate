@@ -69,16 +69,55 @@ export class SearchRepository {
     return rows.map((r) => this.parseNode(r));
   }
 
-  async globalSearch(searchTerm: string): Promise<NodeRecord[]> {
+  async globalSearch(
+    searchTerm: string,
+    filters?: { tagId?: string; updatedSinceMs?: number }
+  ): Promise<NodeRecord[]> {
     const term = searchTerm.trim();
-    if (!term) return [];
+    if (!term) {
+      const rows = await this.adapter.query<any>(
+        `SELECT * FROM node
+         WHERE deleted_at IS NULL AND kind NOT IN ('workspace', 'field') AND content != ''
+         ORDER BY updated_at DESC
+         LIMIT 50`
+      );
+      return rows.map((r) => this.parseNode(r));
+    }
 
+    // FTS5 prefix query: quote each token to neutralize special characters,
+    // and append '*' for prefix matching.
+    const tokens = term
+      .split(/\s+/)
+      .map((t) => t.replace(/"/g, ''))
+      .filter(Boolean)
+      .map((t) => `"${t}"*`);
+    if (tokens.length === 0) return [];
+
+    const conditions = [
+      'fts_node MATCH ?',
+      'n.deleted_at IS NULL',
+      "n.kind NOT IN ('workspace', 'field')",
+    ];
+    const params: any[] = [tokens.join(' ')];
+
+    if (filters?.tagId) {
+      conditions.push('EXISTS (SELECT 1 FROM node_tag nt WHERE nt.node_id = n.id AND nt.tag_def_id = ?)');
+      params.push(filters.tagId);
+    }
+    if (filters?.updatedSinceMs) {
+      conditions.push('n.updated_at >= ?');
+      params.push(filters.updatedSinceMs);
+    }
+
+    // Exact-title match boost, then bm25 relevance, then recency.
     const rows = await this.adapter.query<any>(
-      `SELECT * FROM node
-       WHERE deleted_at IS NULL AND (content LIKE ? OR kind LIKE ?)
-       ORDER BY updated_at DESC
+      `SELECT n.*, bm25(fts_node) AS rank
+       FROM fts_node
+       JOIN node n ON n.rowid = fts_node.rowid
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY (n.content = ?) DESC, rank ASC, n.updated_at DESC
        LIMIT 50`,
-      [`%${term}%`, `%${term}%`]
+      [...params, term]
     );
     return rows.map((r) => this.parseNode(r));
   }

@@ -39,44 +39,44 @@ export const TimerModal: React.FC<TimerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0a]/80 backdrop-blur-xs p-4">
-      <div className="w-full max-w-md bg-[#0a0a0a] border border-[#333333] p-6 text-[#ffffff] font-sans shadow-2xl relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-app)]/80 backdrop-blur-xs p-4">
+      <div className="w-full max-w-md bg-[var(--bg-app)] border border-[var(--border-strong)] p-6 text-[var(--text-primary)] font-sans shadow-2xl relative">
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#888888] hover:text-[#ffffff] cursor-pointer"
+          className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
         >
           <X className="w-4 h-4" strokeWidth={2} />
         </button>
 
-        <div className="text-[10px] font-mono uppercase tracking-[2px] text-[#888888] mb-2">
+        <div className="text-[10px] font-mono uppercase tracking-[2px] text-[var(--text-muted)] mb-2">
           FOCUS TIMER · {durationMin} MIN
         </div>
 
-        <h3 className="text-[18px] font-medium leading-snug mb-6 text-[#ffffff]">
+        <h3 className="text-[18px] font-medium leading-snug mb-6 text-[var(--text-primary)]">
           {title}
         </h3>
 
         {/* Digital Time Readout */}
-        <div className="font-mono text-5xl font-medium tracking-tight text-center my-6 py-4 bg-[#111111] border border-[#222222]">
+        <div className="font-mono text-5xl font-medium tracking-tight text-center my-6 py-4 bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
           {formatTime(secondsLeft)}
         </div>
 
         {/* 2px Determinate Progress Track */}
-        <div className="w-full h-[2px] bg-[#222222] mb-6">
+        <div className="w-full h-[2px] bg-[var(--border-subtle)] mb-6">
           <div
-            className="h-full bg-[#ffffff] transition-all duration-300 ease-out"
+            className="h-full bg-[var(--text-primary)] transition-all duration-300 ease-out"
             style={{ width: `${progress}%` }}
           />
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#222222]">
+        <div className="flex items-center justify-between pt-2 border-t border-[var(--border-subtle)]">
           <div className="flex space-x-2">
             <button
               type="button"
               onClick={() => setIsActive(!isActive)}
-              className="h-8 px-3 flex items-center space-x-1.5 bg-[#ffffff] text-[#000000] text-[11px] font-medium uppercase tracking-[1.5px] hover:bg-[#e0e0e0] active:scale-98 cursor-pointer transition-transform duration-100"
+              className="h-8 px-3 flex items-center space-x-1.5 bg-[var(--text-primary)] text-[#000000] text-[11px] font-medium uppercase tracking-[1.5px] hover:bg-[var(--text-primary)] active:scale-98 cursor-pointer transition-transform duration-100"
             >
               {isActive ? (
                 <>
@@ -97,7 +97,7 @@ export const TimerModal: React.FC<TimerModalProps> = ({
                 setSecondsLeft(totalSeconds);
                 setIsActive(false);
               }}
-              className="h-8 px-3 flex items-center space-x-1.5 bg-[#161616] border border-[#333333] hover:border-[#ffffff] text-[#888888] hover:text-[#ffffff] text-[11px] font-medium uppercase tracking-[1.5px] active:scale-98 cursor-pointer transition-colors duration-100"
+              className="h-8 px-3 flex items-center space-x-1.5 bg-[var(--bg-raised)] border border-[var(--border-strong)] hover:border-[var(--text-primary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] text-[11px] font-medium uppercase tracking-[1.5px] active:scale-98 cursor-pointer transition-colors duration-100"
             >
               <RotateCcw className="w-3.5 h-3.5" strokeWidth={2} />
               <span>RESET</span>
@@ -110,7 +110,7 @@ export const TimerModal: React.FC<TimerModalProps> = ({
               onComplete();
               onClose();
             }}
-            className="h-8 px-3 flex items-center space-x-1.5 bg-[#111111] border border-[#338833] hover:bg-[#338833]/10 text-[#338833] text-[11px] font-medium uppercase tracking-[1.5px] active:scale-98 cursor-pointer transition-colors duration-100"
+            className="h-8 px-3 flex items-center space-x-1.5 bg-[var(--bg-surface)] border border-[var(--green)] hover:bg-[var(--green)]/10 text-[var(--green)] text-[11px] font-medium uppercase tracking-[1.5px] active:scale-98 cursor-pointer transition-colors duration-100"
           >
             <Check className="w-3.5 h-3.5" strokeWidth={2} />
             <span>MARK DONE</span>

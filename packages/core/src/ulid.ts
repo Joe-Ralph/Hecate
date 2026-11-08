@@ -65,6 +65,8 @@ export function ulid(seedTime: number = Date.now()): string {
   return timeStr + randStr;
 }
 
+export const generateUlid = ulid;
+
 export function isValidUlid(id: string): boolean {
   if (!id || typeof id !== 'string' || id.length !== 26) return false;
   for (let i = 0; i < id.length; i++) {

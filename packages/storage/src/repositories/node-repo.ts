@@ -9,6 +9,7 @@ import {
   wouldCauseCycle,
   extractReferencedNodeIds,
   convertReferencesToSnapshot,
+  isUntitledOrEmpty,
 } from '@hecate/core';
 import { StorageAdapter } from '../adapters/storage-adapter';
 
@@ -131,10 +132,91 @@ export class NodeRepository {
     );
   }
 
-  async deleteNode(nodeId: string): Promise<{ refCount: number }> {
+  /**
+   * Fetch raw node by ID whether soft-deleted or not.
+   */
+  async getNodeRaw(id: string): Promise<NodeRecord | null> {
+    const rows = await this.adapter.query<any>(
+      'SELECT * FROM node WHERE id = ?',
+      [id]
+    );
+    if (rows.length === 0) return null;
+    return this.parseRow(rows[0]);
+  }
+
+  /**
+   * Helper to retrieve all descendant IDs of a node recursively.
+   */
+  async getDescendantIds(nodeId: string): Promise<string[]> {
+    const descendants: string[] = [];
+    const queue = [nodeId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const children = await this.adapter.query<{ id: string }>(
+        'SELECT id FROM node WHERE parent_id = ?',
+        [current]
+      );
+      for (const c of children) {
+        descendants.push(c.id);
+        queue.push(c.id);
+      }
+    }
+    return descendants;
+  }
+
+  /**
+   * Permanently delete a node and its descendants from SQLite (bypasses trash).
+   */
+  async permanentlyDeleteNode(nodeId: string): Promise<void> {
+    const allIds = [nodeId, ...(await this.getDescendantIds(nodeId))];
     const now = Date.now();
-    const target = await this.getById(nodeId);
-    if (!target) return { refCount: 0 };
+
+    for (const id of allIds) {
+      // Find incoming references and snapshot them before permanent deletion
+      const refs = await this.adapter.query<{ source_node_id: string }>(
+        'SELECT source_node_id FROM ref WHERE target_node_id = ?',
+        [id]
+      );
+      const target = await this.getNodeRaw(id);
+      for (const r of refs) {
+        if (allIds.includes(r.source_node_id)) continue;
+        const source = await this.getNodeRaw(r.source_node_id);
+        if (source && source.content) {
+          const updated = convertReferencesToSnapshot(
+            source.content,
+            id,
+            target?.content || '[Deleted]'
+          );
+          if (updated !== source.content) {
+            await this.adapter.execute(
+              'UPDATE node SET content = ?, updated_at = ? WHERE id = ?',
+              [updated, now, source.id]
+            );
+          }
+        }
+      }
+
+      // Remove from ref, node_tag, and node tables
+      await this.adapter.execute(
+        'DELETE FROM ref WHERE target_node_id = ? OR source_node_id = ?',
+        [id, id]
+      );
+      await this.adapter.execute('DELETE FROM node_tag WHERE node_id = ?', [id]);
+      await this.adapter.execute('DELETE FROM node WHERE id = ?', [id]);
+    }
+  }
+
+  async deleteNode(nodeId: string): Promise<{ refCount: number; permanentlyDeleted: boolean }> {
+    const target = await this.getNodeRaw(nodeId);
+    if (!target) return { refCount: 0, permanentlyDeleted: false };
+
+    // If untitled entry with no content is deleted then permanently delete and don't store in trash
+    if (isUntitledOrEmpty(target.content)) {
+      await this.permanentlyDeleteNode(nodeId);
+      return { refCount: 0, permanentlyDeleted: true };
+    }
+
+    const now = Date.now();
 
     // Find all incoming references
     const refs = await this.adapter.query<{ source_node_id: string }>(
@@ -147,7 +229,11 @@ export class NodeRepository {
     for (const r of refs) {
       const source = await this.getById(r.source_node_id);
       if (source && source.content) {
-        const updated = convertReferencesToSnapshot(source.content, nodeId, target.content || '[Deleted]');
+        const updated = convertReferencesToSnapshot(
+          source.content,
+          nodeId,
+          target.content || '[Deleted]'
+        );
         if (updated !== source.content) {
           await this.adapter.execute(
             'UPDATE node SET content = ?, updated_at = ? WHERE id = ?',
@@ -163,13 +249,16 @@ export class NodeRepository {
       nodeId,
     ]);
 
-    // Soft delete target node and its subtrees
-    await this.adapter.execute(
-      'UPDATE node SET deleted_at = ?, updated_at = ? WHERE id = ?',
-      [now, now, nodeId]
-    );
+    // Soft delete target node and its subtrees to trash
+    const allIds = [nodeId, ...(await this.getDescendantIds(nodeId))];
+    for (const id of allIds) {
+      await this.adapter.execute(
+        'UPDATE node SET deleted_at = ?, updated_at = ? WHERE id = ?',
+        [now, now, id]
+      );
+    }
 
-    return { refCount };
+    return { refCount, permanentlyDeleted: false };
   }
 
   async getTrash(): Promise<NodeRecord[]> {
@@ -181,10 +270,20 @@ export class NodeRepository {
 
   async restoreNode(nodeId: string): Promise<void> {
     const now = Date.now();
-    await this.adapter.execute(
-      'UPDATE node SET deleted_at = NULL, updated_at = ? WHERE id = ?',
-      [now, nodeId]
-    );
+    const allIds = [nodeId, ...(await this.getDescendantIds(nodeId))];
+    for (const id of allIds) {
+      await this.adapter.execute(
+        'UPDATE node SET deleted_at = NULL, updated_at = ? WHERE id = ?',
+        [now, id]
+      );
+    }
+  }
+
+  async emptyTrash(): Promise<void> {
+    const trash = await this.getTrash();
+    for (const item of trash) {
+      await this.permanentlyDeleteNode(item.id);
+    }
   }
 
   async getOrCreateDayNode(dateIso: string): Promise<NodeRecord> {

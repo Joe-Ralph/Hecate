@@ -124,3 +124,16 @@ export function convertReferencesToSnapshot(
   const token = `[[node:${deletedNodeId}]]`;
   return text.replaceAll(token, snapshotText || '[Deleted node]');
 }
+
+/**
+ * Checks if a node entry is untitled with no content.
+ * Returns true if content is empty string, whitespace only, or standard "untitled" strings.
+ */
+export function isUntitledOrEmpty(content?: string | null): boolean {
+  if (!content) return true;
+  const trimmed = content.trim();
+  if (trimmed === '') return true;
+  const lower = trimmed.toLowerCase();
+  return lower === 'untitled' || lower === 'untitled node';
+}
+

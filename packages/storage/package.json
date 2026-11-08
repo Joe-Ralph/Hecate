@@ -9,10 +9,9 @@
   },
   "dependencies": {
     "@hecate/core": "workspace:*",
-    "sql.js": "^1.15.2"
+    "@sqlite.org/sqlite-wasm": "3.54.1-build1"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11",
     "vitest": "^2.1.0"
   }
 }

@@ -6,6 +6,7 @@ import {
   extractTagDefIds,
   extractDateTokens,
   convertReferencesToSnapshot,
+  isUntitledOrEmpty,
 } from '../src/invariants';
 
 describe('Graph Invariants & Cycle Detection', () => {
@@ -61,5 +62,19 @@ describe('Graph Invariants & Cycle Detection', () => {
     const text = 'Met with [[node:01H123]] at the cafe.';
     const converted = convertReferencesToSnapshot(text, '01H123', 'Maya Lin');
     expect(converted).toBe('Met with Maya Lin at the cafe.');
+  });
+
+  it('correctly identifies untitled and empty entries', () => {
+    expect(isUntitledOrEmpty('')).toBe(true);
+    expect(isUntitledOrEmpty('   ')).toBe(true);
+    expect(isUntitledOrEmpty(null)).toBe(true);
+    expect(isUntitledOrEmpty(undefined)).toBe(true);
+    expect(isUntitledOrEmpty('Untitled')).toBe(true);
+    expect(isUntitledOrEmpty('untitled')).toBe(true);
+    expect(isUntitledOrEmpty('Untitled Node')).toBe(true);
+    expect(isUntitledOrEmpty('untitled node')).toBe(true);
+
+    expect(isUntitledOrEmpty('Real Content')).toBe(false);
+    expect(isUntitledOrEmpty('Untitled Project Spec')).toBe(false);
   });
 });

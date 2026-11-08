@@ -32,7 +32,7 @@ A solo knowledge worker who captures notes, tasks, books, people, and meetings d
 | Language | TypeScript (strict) for frontend; Rust only for Tauri shell/commands |
 | Frontend | React 18 + Vite, Tailwind CSS, Radix UI primitives, Zustand for UI state |
 | Inline editor | One TipTap (ProseMirror) instance per **focused** node; unfocused nodes render as static HTML for performance |
-| Storage | SQLite as the single source of truth. Web: `@sqlite.org/sqlite-wasm` with OPFS in a Web Worker. Tauri: `tauri-plugin-sql` (native SQLite). Both sit behind one `StorageAdapter` interface |
+| Storage | SQLite as the single source of truth. Web: `@sqlite.org/sqlite-wasm` (FTS5 included) with IndexedDB binary persistence (OPFS in a Web Worker is a planned follow-up). Tauri: `tauri-plugin-sql` (native SQLite). Both sit behind one `StorageAdapter` interface |
 | Query layer | Kysely (typed SQL builder) over the adapter |
 | Full-text search | SQLite FTS5 virtual table over node text |
 | Native | Tauri v2 (desktop: macOS, Windows, Linux; mobile: iOS, Android via Tauri v2 mobile targets) |

@@ -8,6 +8,7 @@ import {
   TagDefMeta,
   ulid,
   planTagTemplateInjection,
+  resolveEffectiveTagFields,
   wouldCauseTagCycle,
   generateNKeysBetween,
 } from '@hecate/core';
@@ -83,29 +84,85 @@ export class TagRepository {
   }
 
   async updateTagDef(id: string, meta: Partial<TagDefMeta>): Promise<void> {
+    return this.updateTag(id, undefined, meta);
+  }
+
+  async updateTag(id: string, name?: string, meta?: Partial<TagDefMeta>): Promise<void> {
     const tag = await this.getTag(id);
     if (!tag) throw new Error(`Tag ${id} not found`);
 
-    const currentMeta: TagDefMeta = tag.meta as TagDefMeta;
-    const newExtends = meta.extends ?? currentMeta.extends ?? [];
-
-    // Cycle check
-    const allTags = await this.getAllTags();
-    const tagMap = new Map<string, TagDefMeta>();
-    for (const t of allTags) {
-      tagMap.set(t.id, t.meta as TagDefMeta);
-    }
-
-    if (wouldCauseTagCycle(id, newExtends, (tid) => tagMap.get(tid)?.extends || [])) {
-      throw new Error(`Circular inheritance detected: tag ${id} cannot extend cycle`);
-    }
-
-    const merged = { ...currentMeta, ...meta };
     const now = Date.now();
+    const cleanName = name ? name.trim().replace(/^#/, '') : tag.content;
+    const currentMeta: TagDefMeta = (tag.meta as TagDefMeta) || {};
+    const newExtends = meta?.extends ?? currentMeta.extends ?? [];
+
+    if (meta?.extends) {
+      const allTags = await this.getAllTags();
+      const tagMap = new Map<string, TagDefMeta>();
+      for (const t of allTags) {
+        tagMap.set(t.id, t.meta as TagDefMeta);
+      }
+
+      if (wouldCauseTagCycle(id, newExtends, (tid) => tagMap.get(tid)?.extends || [])) {
+        throw new Error(`Circular inheritance detected: tag ${id} cannot extend cycle`);
+      }
+    }
+
+    const merged = { ...currentMeta, ...(meta || {}) };
     await this.adapter.execute(
-      'UPDATE node SET meta = ?, updated_at = ? WHERE id = ?',
-      [JSON.stringify(merged), now, id]
+      'UPDATE node SET content = ?, meta = ?, updated_at = ? WHERE id = ?',
+      [cleanName, JSON.stringify(merged), now, id]
     );
+  }
+
+  async getAllFieldDefs(): Promise<NodeRecord[]> {
+    const rows = await this.adapter.query<any>(
+      "SELECT * FROM node WHERE kind = 'fieldDef' AND deleted_at IS NULL ORDER BY content ASC"
+    );
+    return rows.map((r) => this.parseNode(r));
+  }
+
+  async createFieldDef(name: string, meta: { type: string; options?: any[]; defaultValue?: any }): Promise<NodeRecord> {
+    const clean = name.trim();
+    const existing = await this.adapter.query<any>(
+      "SELECT * FROM node WHERE kind = 'fieldDef' AND content = ? AND deleted_at IS NULL",
+      [clean]
+    );
+    if (existing.length > 0) {
+      return this.parseNode(existing[0]);
+    }
+
+    return this.nodeRepo.create({
+      kind: 'fieldDef',
+      content: clean,
+      meta,
+    });
+  }
+
+  async addFieldToNode(nodeId: string, fieldDefId: string, initialValue = '', pinned = true): Promise<void> {
+    const children = await this.nodeRepo.getChildren(nodeId);
+    const exists = children.some((c) => c.kind === 'field' && c.meta?.fieldDefId === fieldDefId);
+    if (exists) return;
+
+    const fieldNode = await this.nodeRepo.create({
+      parent_id: nodeId,
+      kind: 'field',
+      meta: { fieldDefId, pinned },
+    });
+
+    await this.nodeRepo.create({
+      parent_id: fieldNode.id,
+      kind: 'fieldValue',
+      content: initialValue,
+      position: 'a0',
+    });
+
+    await this.adapter.execute('UPDATE node SET updated_at = ? WHERE id = ?', [Date.now(), nodeId]);
+  }
+
+  async deleteTag(id: string): Promise<void> {
+    await this.adapter.execute('DELETE FROM node_tag WHERE tag_def_id = ?', [id]);
+    await this.nodeRepo.deleteNode(id);
   }
 
   async applyTag(nodeId: string, tagDefId: string): Promise<void> {
@@ -179,18 +236,29 @@ export class TagRepository {
       });
     }
 
-    // 6. Inject default content if any
-    if (plan.contentToInject.length > 0) {
-      const contentPositions = generateNKeysBetween(null, null, plan.contentToInject.length);
-      for (let i = 0; i < plan.contentToInject.length; i++) {
-        const item = plan.contentToInject[i];
-        await this.nodeRepo.create({
-          parent_id: nodeId,
+    // 6. Inject default content if any (deep copies, recursively per REQ-3.2)
+    const injectContent = async (
+      parentId: string,
+      items: typeof plan.contentToInject,
+      positions: string[]
+    ) => {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const created = await this.nodeRepo.create({
+          parent_id: parentId,
           kind: item.kind,
           content: item.content,
-          position: contentPositions[i],
+          position: positions[i],
         });
+        if (item.children && item.children.length > 0) {
+          const childPositions = generateNKeysBetween(null, null, item.children.length);
+          await injectContent(created.id, item.children, childPositions);
+        }
       }
+    };
+    if (plan.contentToInject.length > 0) {
+      const contentPositions = generateNKeysBetween(null, null, plan.contentToInject.length);
+      await injectContent(nodeId, plan.contentToInject, contentPositions);
     }
 
     // 7. Touch parent node updated_at
@@ -198,10 +266,54 @@ export class TagRepository {
   }
 
   async removeTag(nodeId: string, tagDefId: string): Promise<void> {
+    // 1. Fetch current tags associated with this node
+    const currentTags = await this.getTagsForNode(nodeId);
+
+    // 2. Fetch all tag definitions to resolve field inheritance
+    const allTags = await this.getAllTags();
+    const tagMap = new Map<string, TagDefMeta>();
+    for (const t of allTags) {
+      tagMap.set(t.id, t.meta as TagDefMeta);
+    }
+
+    // 3. Resolve effective fields introduced by the tag being removed
+    const fieldsOfRemovedTag = resolveEffectiveTagFields([tagDefId], (id) => tagMap.get(id));
+    const removedFieldDefIds = new Set(fieldsOfRemovedTag.map((f) => f.fieldDefId));
+
+    // 4. Resolve effective fields still needed by remaining tags on the node
+    const remainingTagIds = currentTags.filter((t) => t.id !== tagDefId).map((t) => t.id);
+    const remainingFields = resolveEffectiveTagFields(remainingTagIds, (id) => tagMap.get(id));
+    const remainingFieldDefIds = new Set(remainingFields.map((f) => f.fieldDefId));
+
+    // 5. Identify fields that belong to the removed tag and are not needed by any remaining tag
+    const fieldDefsToRemove = new Set(
+      Array.from(removedFieldDefIds).filter((fid) => !remainingFieldDefIds.has(fid))
+    );
+
+    // 6. Remove only EMPTY field instances introduced by the removed tag
+    // (REQ-3.2: injected content is never deleted; non-empty field values are kept)
+    if (fieldDefsToRemove.size > 0) {
+      const children = await this.nodeRepo.getChildren(nodeId);
+      for (const child of children) {
+        if (child.kind === 'field' && child.meta?.fieldDefId) {
+          if (fieldDefsToRemove.has(child.meta.fieldDefId)) {
+            const values = await this.nodeRepo.getChildren(child.id);
+            const hasValue = values.some((v) => (v.content || '').trim().length > 0);
+            if (!hasValue) {
+              await this.nodeRepo.permanentlyDeleteNode(child.id);
+            }
+          }
+        }
+      }
+    }
+
+    // 7. Delete association from node_tag
     await this.adapter.execute(
       'DELETE FROM node_tag WHERE node_id = ? AND tag_def_id = ?',
       [nodeId, tagDefId]
     );
+
+    // 8. Update parent updated_at
     await this.adapter.execute('UPDATE node SET updated_at = ? WHERE id = ?', [Date.now(), nodeId]);
   }
 

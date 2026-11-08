@@ -2,65 +2,171 @@
 @source "../../../packages/ui/src";
 @source "../src";
 
-/* Inviolable Law 1: Absolute Zero Radius Everywhere */
-*,
-*::before,
-*::after {
-  border-radius: 0 !important;
+:root {
+  /* Base palette — warm dark (default theme) */
+  --bg-app: #121110;
+  --bg-surface: #161513;
+  --bg-raised: #1c1a18;
+  --bg-hover: #1f1d1a;
+  --bg-active: #24211e;
+  --border-subtle: #2a2825;
+  --border-strong: #34312d;
+  --bg-track: #1a1917;
+  --bg-segment: #2a2723;
+  --bg-accent-dim: #1b1726;
+  --bg-accent-soft: #262033;
+  --border-accent: #4a3f6e;
+  --text-primary: #ece8e1;
+  --text-secondary: #d8d2c8;
+  --text-tertiary: #c9c3b9;
+  --text-muted: #9a948a;
+  --text-faint: #8a847a;
+  --accent: #c4b2ff;
+  --accent-hover: #b09bff;
+  --accent-decoration: #6d5aa8;
+  --green: #8fd18b;
+  --red: #e8856a;
+  --blue: #8cc4f0;
+  --gold: #e8b86a;
+  --green-dim: #1e2a1e;
+  --red-dim: #2a1e1a;
+
+  /* Aliases used by the design system */
+  --bg: var(--bg-app);
+  --bg-side: var(--bg-surface);
+  --surface: var(--bg-raised);
+  --surface-2: var(--bg-track);
+  --hover: var(--bg-hover);
+  --hover-nav: var(--bg-hover);
+  --active: var(--bg-active);
+  --active-2: var(--bg-segment);
+  --border: var(--border-subtle);
+  --border-strong: var(--border-strong);
+
+  --text: var(--text-primary);
+  --text-2: var(--text-secondary);
+  --text-3: var(--text-tertiary);
+  --muted: var(--text-muted);
+  --faint: var(--text-faint);
+
+  --accent-bg: var(--bg-accent-dim);
+  --accent-border: var(--border-accent);
+  --accent-chip: var(--bg-accent-soft);
+  --ref-underline: var(--accent-decoration);
+
+  --success: var(--green);
+  --success-bg: var(--green-dim);
+  --danger: var(--red);
+
+  /* Typography */
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Radii scale */
+  --r-checkbox: 5px;
+  --r-chip: 6px;
+  --r-field: 6px;
+  --r-row: 8px;
+  --r-nav: 8px;
+  --r-btn: 10px;
+  --r-input: 10px;
+  --r-card: 10px;
+  --r-featured-card: 14px;
+
+  color-scheme: dark;
 }
 
-:root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --inset: #161616;
-  --border: #222222;
-  --border-emp: #333333;
-  --text-primary: #ffffff;
-  --text-secondary: #888888;
-  --text-muted: #555555;
-  --text-disabled: #3a3a3a;
-  color-scheme: dark;
+/* Warm light theme (REQ-7.6) */
+:root[data-theme='light'] {
+  --bg-app: #f5f2ed;
+  --bg-surface: #faf8f4;
+  --bg-raised: #efebe3;
+  --bg-hover: #e9e4da;
+  --bg-active: #e3dcd0;
+  --border-subtle: #ddd5c8;
+  --border-strong: #c9c0b1;
+  --bg-track: #eae5db;
+  --bg-segment: #ded6c8;
+  --bg-accent-dim: #e8e1f5;
+  --bg-accent-soft: #e4dcf5;
+  --border-accent: #b9a6e8;
+  --text-primary: #2a2620;
+  --text-secondary: #4a443a;
+  --text-tertiary: #5c5548;
+  --text-muted: #7a7263;
+  --text-faint: #948a77;
+  --accent: #6d4fc2;
+  --accent-hover: #5d41ab;
+  --accent-decoration: #8a72c9;
+  --green: #2e7d43;
+  --red: #c2502f;
+  --blue: #2b6f9e;
+  --gold: #a0721c;
+  --green-dim: #dcebdd;
+  --red-dim: #f0ded4;
+
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   padding: 0;
   background-color: var(--bg);
-  color: var(--text-primary);
-  font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', sans-serif;
+  color: var(--text);
+  font-family: var(--font-ui);
   overflow: hidden;
   height: 100vh;
   width: 100vw;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom scrollbars matching Terminal Brutalism */
+/* 2.5 Focus Ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Custom scrollbars matching Quiet Warm Dark */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: var(--bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #222222;
+  background: var(--border-strong);
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #333333;
+  background: var(--muted);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* TipTap inline editor styles */
 .tiptap-editor {
   outline: none;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--text);
 }
 .tiptap-editor p {
   margin: 0;
-  line-height: 1.4;
+  line-height: 26px;
 }
 .tiptap-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: #555555;
+  color: var(--muted);
   pointer-events: none;
   height: 0;
 }

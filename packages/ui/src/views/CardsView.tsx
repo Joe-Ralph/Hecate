@@ -9,30 +9,33 @@ export interface KanbanColumn {
 }
 
 export interface CardsViewProps {
-  columns: KanbanColumn[];
-  nodes: NodeRecord[];
-  getNodeColumnId: (node: NodeRecord) => string;
-  onMoveNode: (nodeId: string, newColumnId: string) => void;
+  columns?: KanbanColumn[];
+  nodes?: NodeRecord[];
+  getNodeColumnId?: (node: NodeRecord) => string;
+  onMoveNode?: (nodeId: string, newColumnId: string) => void;
   onNodeClick?: (nodeId: string) => void;
   onAddCard?: (columnId: string) => void;
   className?: string;
 }
 
 export const CardsView: React.FC<CardsViewProps> = ({
-  columns,
-  nodes,
-  getNodeColumnId,
-  onMoveNode,
+  columns = [],
+  nodes = [],
+  getNodeColumnId = (n) => (n.done_at ? 'done' : 'todo'),
+  onMoveNode = () => {},
   onNodeClick,
   onAddCard,
   className = '',
 }) => {
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
 
+  const safeColumns = columns || [];
+  const safeNodes = nodes || [];
+
   return (
     <div className={`flex space-x-3 overflow-x-auto pb-4 items-start ${className}`}>
-      {columns.map((col) => {
-        const columnNodes = nodes.filter((n) => getNodeColumnId(n) === col.id);
+      {safeColumns.map((col) => {
+        const columnNodes = safeNodes.filter((n) => getNodeColumnId(n) === col.id);
 
         return (
           <div
@@ -45,10 +48,10 @@ export const CardsView: React.FC<CardsViewProps> = ({
                 setDraggedNodeId(null);
               }
             }}
-            className="w-72 min-w-[288px] bg-[#111111] border border-[#222222] flex flex-col font-sans"
+            className="w-72 min-w-[288px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex flex-col font-sans"
           >
             {/* Column Header */}
-            <div className="p-3 border-b border-[#222222] flex items-center justify-between">
+            <div className="p-3 border-b border-[var(--border-subtle)] flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 {col.color && (
                   <div
@@ -56,10 +59,10 @@ export const CardsView: React.FC<CardsViewProps> = ({
                     style={{ backgroundColor: col.color }}
                   />
                 )}
-                <span className="text-[11px] font-medium uppercase tracking-[1.5px] text-[#ffffff]">
+                <span className="text-[11px] font-medium uppercase tracking-[1.5px] text-[var(--text-primary)]">
                   {col.title}
                 </span>
-                <span className="text-[10px] font-mono text-[#555555]">
+                <span className="text-[10px] font-mono text-[var(--text-faint)]">
                   ({columnNodes.length})
                 </span>
               </div>
@@ -68,7 +71,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onAddCard(col.id)}
-                  className="text-[#555555] hover:text-[#ffffff] cursor-pointer"
+                  className="text-[var(--text-faint)] hover:text-[var(--text-primary)] cursor-pointer"
                   title="Add card to column"
                 >
                   <Plus className="w-3.5 h-3.5" strokeWidth={2} />
@@ -79,7 +82,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
             {/* Cards Column Body */}
             <div className="p-2 space-y-2 min-h-[200px]">
               {columnNodes.length === 0 ? (
-                <div className="py-8 text-center text-[#3a3a3a] text-[11px] font-mono uppercase tracking-[1px]">
+                <div className="py-8 text-center text-[var(--text-faint)] text-[11px] font-mono uppercase tracking-[1px]">
                   Empty
                 </div>
               ) : (
@@ -89,14 +92,14 @@ export const CardsView: React.FC<CardsViewProps> = ({
                     draggable
                     onDragStart={() => setDraggedNodeId(node.id)}
                     onClick={() => onNodeClick?.(node.id)}
-                    className="p-3 bg-[#0a0a0a] border border-[#222222] hover:border-[#555555] cursor-pointer active:scale-98 transition-all duration-100 group select-none"
+                    className="p-3 bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--text-faint)] cursor-pointer active:scale-98 transition-all duration-100 group select-none"
                   >
-                    <div className="text-[13px] font-medium text-[#ffffff] mb-1 leading-snug">
-                      {node.content || <span className="italic text-[#555555]">Untitled</span>}
+                    <div className="text-[13px] font-medium text-[var(--text-primary)] mb-1 leading-snug">
+                      {node.content || <span className="italic text-[var(--text-faint)]">Untitled</span>}
                     </div>
 
                     {node.done_at && (
-                      <div className="text-[10px] font-mono text-[#338833] mt-2">
+                      <div className="text-[10px] font-mono text-[var(--green)] mt-2">
                         COMPLETED
                       </div>
                     )}

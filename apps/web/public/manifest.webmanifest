@@ -1,0 +1,10 @@
+{
+  "name": "Hecate",
+  "short_name": "Hecate",
+  "description": "Local-first graph outliner PKM with supertags and an AI mini-task coach",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121110",
+  "theme_color": "#121110",
+  "icons": []
+}

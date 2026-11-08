@@ -271,4 +271,193 @@ describe('Hecate End-to-End Acceptance Scenarios (FRD Section 11)', () => {
     const duration = Date.now() - start;
     expect(duration).toBeLessThan(100);
   });
+
+  // Scenario 17: Deletion & Trash Invariants
+  it('Scenario 17: Deletion & Trash - Untitled empty entry permanently deleted; entries with content moved to trash with permanent delete option', async () => {
+    // 1. Create an untitled node with no content
+    const untitledNode = await db.nodes.create({ content: '' });
+
+    // 2. Delete it: must be permanently deleted, not stored in trash
+    const res1 = await db.nodes.deleteNode(untitledNode.id);
+    expect(res1.permanentlyDeleted).toBe(true);
+
+    const trashAfterEmpty = await db.nodes.getTrash();
+    expect(trashAfterEmpty.find((n) => n.id === untitledNode.id)).toBeUndefined();
+
+    // 3. Create a node with content
+    const contentNode = await db.nodes.create({ content: 'Article Draft on Systems Thinking' });
+
+    // 4. Delete it: stored in trash
+    const res2 = await db.nodes.deleteNode(contentNode.id);
+    expect(res2.permanentlyDeleted).toBe(false);
+
+    let trashAfterContent = await db.nodes.getTrash();
+    expect(trashAfterContent.find((n) => n.id === contentNode.id)).toBeDefined();
+
+    // 5. Permanently delete option from trash
+    await db.nodes.permanentlyDeleteNode(contentNode.id);
+
+    const finalTrash = await db.nodes.getTrash();
+    expect(finalTrash.find((n) => n.id === contentNode.id)).toBeUndefined();
+
+    const raw = await db.nodes.getNodeRaw(contentNode.id);
+    expect(raw).toBeNull();
+  });
+
+  // Scenario 18: Inline Supertag Autocomplete Prefix Filtering & Tagging
+  it('Scenario 18: Inline Supertag Autocomplete Prefix Filtering & Tagging', async () => {
+    // 1. Regex validates trigger only at start of line or immediately after space
+    const HASH_REGEX = /(?:^|\s)#([a-zA-Z0-9_\-]*)$/;
+
+    expect('#'.match(HASH_REGEX)?.[1]).toBe('');
+    expect('#top'.match(HASH_REGEX)?.[1]).toBe('top');
+    expect('Important meeting #task'.match(HASH_REGEX)?.[1]).toBe('task');
+    expect('Note title #'.match(HASH_REGEX)?.[1]).toBe('');
+    expect('test#not_tag'.match(HASH_REGEX)).toBeNull();
+    expect('meeting #task '.match(HASH_REGEX)).toBeNull();
+
+    // 2. Setup supertags in database
+    await db.tags.createTag('task', { color: '#8fd18b', showCheckbox: true });
+    await db.tags.createTag('topic', { color: '#c4b2ff' });
+    await db.tags.createTag('project', { color: '#a855f7' });
+
+    const allTags = await db.tags.getAllTags();
+
+    // Helper filter function matching OutlinerNode logic
+    function filterTags(prefix: string) {
+      const clean = prefix.toLowerCase().trim();
+      if (!clean) return allTags;
+      return allTags
+        .filter((t) => t.content.toLowerCase().includes(clean))
+        .sort((a, b) => {
+          const aStarts = a.content.toLowerCase().startsWith(clean);
+          const bStarts = b.content.toLowerCase().startsWith(clean);
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          return a.content.localeCompare(b.content);
+        });
+    }
+
+    const filteredTop = filterTags('top');
+    expect(filteredTop.length).toBe(1);
+    expect(filteredTop[0].content).toBe('topic');
+
+    const filteredT = filterTags('t');
+    expect(filteredT.map((t) => t.content)).toContain('task');
+    expect(filteredT.map((t) => t.content)).toContain('topic');
+
+    // 3. Create node, apply tag, verify tag association and template fields
+    const note = await db.nodes.create({ content: 'Explore systems architecture' });
+    const taskTag = await db.tags.getTagByName('task');
+    await db.tags.applyTag(note.id, taskTag!.id);
+
+    const noteTags = await db.tags.getTagsForNode(note.id);
+    expect(noteTags.some((t) => t.content === 'task')).toBe(true);
+
+    const children = await db.nodes.getChildren(note.id);
+    const fieldChildren = children.filter((c) => c.kind === 'field');
+    expect(fieldChildren.length).toBeGreaterThan(0);
+  });
+
+  // Scenario 16: Universal [[ Node References in Text Fields and Content
+  it('Scenario 16: Universal [[ Node References in Text Fields and Content', async () => {
+    // 1. Create #person supertag and person nodes
+    const personTag = await db.tags.createTag('person', { color: '#c4b2ff' });
+    const jane = await db.nodes.create({ content: 'Jane Austen' });
+    await db.tags.applyTag(jane.id, personTag.id);
+
+    const george = await db.nodes.create({ content: 'George Orwell' });
+    await db.tags.applyTag(george.id, personTag.id);
+
+    // 2. Global search prefix matching
+    const searchJane = await db.search.globalSearch('Jane');
+    expect(searchJane.length).toBe(1);
+    expect(searchJane[0].id).toBe(jane.id);
+    expect(searchJane[0].content).toBe('Jane Austen');
+
+    // Verify tag retrieval for the search result
+    const janeTags = await db.tags.getTagsForNode(jane.id);
+    expect(janeTags.map((t) => t.content)).toContain('person');
+
+    // 3. Create #book node with Author field
+    const authorDef = await db.tags.createFieldDef('Author', { type: 'text' });
+    const bookTag = await db.tags.createTag('book', {
+      color: '#a855f7',
+      fieldDefs: [{ fieldDefId: authorDef.id }],
+    });
+    const book = await db.nodes.create({ content: 'Pride and Prejudice' });
+    await db.tags.applyTag(book.id, bookTag.id);
+
+    // Find the Author value node
+    const bookChildren = await db.nodes.getChildren(book.id);
+    const authorFieldWrapper = bookChildren.find(
+      (c) => c.kind === 'field' && (c.meta as any)?.fieldDefId === authorDef.id
+    );
+    expect(authorFieldWrapper).toBeDefined();
+
+    const authorFieldChildren = await db.nodes.getChildren(authorFieldWrapper!.id);
+    expect(authorFieldChildren.length).toBe(1);
+    const authorValueNode = authorFieldChildren[0];
+
+    // 4. Set Author value using [[node:<jane.id>]]
+    await db.nodes.updateContent(authorValueNode.id, `[[node:${jane.id}]]`);
+
+    // Verify reference backlink was recorded
+    const backlinks = await db.refs.getBacklinks(jane.id);
+    expect(backlinks.length).toBe(1);
+    expect(backlinks[0].id).toBe(authorValueNode.id);
+
+    // 5. Global search with empty string returns recent content nodes without workspace/field internal nodes
+    const recent = await db.search.globalSearch('');
+    expect(recent.length).toBeGreaterThan(0);
+    expect(recent.every((r) => r.kind !== 'workspace' && r.kind !== 'field')).toBe(true);
+    expect(recent.map((r) => r.id)).toContain(jane.id);
+    expect(recent.map((r) => r.id)).toContain(george.id);
+    expect(recent.map((r) => r.id)).toContain(book.id);
+  });
+
+  // Scenario 17: Library Tag Instances View
+  it('Scenario 17: Library Tag Instances - Retrieves all nodes associated with a supertag', async () => {
+    // 1. Create #recipe supertag
+    const recipeTag = await db.tags.createTag('recipe', { color: '#e8856a' });
+
+    // 2. Create nodes tagged with #recipe
+    const r1 = await db.nodes.create({ content: 'Sourdough Bread' });
+    await db.tags.applyTag(r1.id, recipeTag.id);
+
+    const r2 = await db.nodes.create({ content: 'Classic Lasagna' });
+    await db.tags.applyTag(r2.id, recipeTag.id);
+
+    const r3 = await db.nodes.create({ content: 'Tiramisu' });
+    await db.tags.applyTag(r3.id, recipeTag.id);
+
+    // Create untagged node
+    await db.nodes.create({ content: 'Grocery shopping list' });
+
+    // 3. Query getNodesWithTag
+    const recipeNodes = await db.tags.getNodesWithTag(recipeTag.id);
+    expect(recipeNodes.length).toBe(3);
+    const titles = recipeNodes.map((n) => n.content);
+    expect(titles).toContain('Sourdough Bread');
+    expect(titles).toContain('Classic Lasagna');
+    expect(titles).toContain('Tiramisu');
+    expect(titles).not.toContain('Grocery shopping list');
+
+    // 4. Soft-delete one recipe and verify it no longer appears in tag instances
+    await db.nodes.deleteNode(r2.id);
+    const updatedRecipes = await db.tags.getNodesWithTag(recipeTag.id);
+    expect(updatedRecipes.length).toBe(2);
+    expect(updatedRecipes.map((n) => n.content)).not.toContain('Classic Lasagna');
+
+    // 5. Verify tag node count query
+    const countRows = await db.adapter.query<any>(
+      `SELECT nt.tag_def_id, COUNT(*) as count
+       FROM node_tag nt
+       JOIN node n ON n.id = nt.node_id
+       WHERE n.deleted_at IS NULL AND nt.tag_def_id = ?
+       GROUP BY nt.tag_def_id`,
+      [recipeTag.id]
+    );
+    expect(countRows[0].count).toBe(2);
+  });
 });

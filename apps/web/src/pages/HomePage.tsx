@@ -1,16 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Calendar, Clock, RefreshCw } from 'lucide-react';
-import { NodeRecord, MiniTaskRecord } from '@hecate/core';
-import { MiniTaskCard, AppLoader } from '@hecate/ui';
+import { Calendar, ChevronRight } from 'lucide-react';
+import { NodeRecord } from '@hecate/core';
+import { CaptureBar } from '@hecate/ui';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { OutlinerNode } from '../components/OutlinerNode';
 
-export const HomePage: React.FC = () => {
+export interface HomePageProps {
+  onOpenNodePicker?: (nodeId: string) => void;
+  onOpenTagPicker?: (nodeId: string) => void;
+  onOpenFieldPicker?: (nodeId: string) => void;
+  onEditSupertag?: (tagDefId: string) => void;
+}
+
+export const HomePage: React.FC<HomePageProps> = ({
+  onOpenNodePicker,
+  onOpenTagPicker,
+  onOpenFieldPicker,
+  onEditSupertag,
+}) => {
   const store = useWorkspaceStore();
   const [todayNode, setTodayNode] = useState<NodeRecord | null>(null);
   const [todayChildren, setTodayChildren] = useState<NodeRecord[]>([]);
-  const [recentNodes, setRecentNodes] = useState<NodeRecord[]>([]);
+  const [openTasksCount, setOpenTasksCount] = useState<number>(0);
+  const [referencesCount, setReferencesCount] = useState<number>(0);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [availableTags, setAvailableTags] = useState<
+    Array<{ id: string; name: string; color?: string; fieldCount?: number }>
+  >([]);
+
+  useEffect(() => {
+    if (!store.db) return;
+    store.db.tags.getAllTags().then((tags) => {
+      setAvailableTags(
+        tags.map((t) => ({
+          id: t.id,
+          name: t.content,
+          color: (t.meta as any)?.color,
+          fieldCount: (t.meta as any)?.fieldDefs?.length || 0,
+        }))
+      );
+    });
+  }, [store.db, store.version]);
 
   useEffect(() => {
     if (!store.db || !store.todayNodeId) return;
@@ -20,16 +50,16 @@ export const HomePage: React.FC = () => {
       if (!store.db || !store.todayNodeId) return;
       const node = await store.db.nodes.getById(store.todayNodeId);
       const children = await store.db.nodes.getChildren(store.todayNodeId);
-      const recents = await store.db.adapter.query<any>(
-        `SELECT * FROM node
-         WHERE kind = 'content' AND deleted_at IS NULL
-         ORDER BY updated_at DESC LIMIT 8`
-      );
+      const refs = await store.db.refs.getBacklinks(store.todayNodeId);
+
+      // Count open tasks under today
+      const openTasks = children.filter((c) => !c.done_at);
 
       if (!cancelled) {
         setTodayNode(node);
         setTodayChildren(children);
-        setRecentNodes(recents);
+        setOpenTasksCount(openTasks.length);
+        setReferencesCount(refs.length);
       }
     }
 
@@ -39,140 +69,105 @@ export const HomePage: React.FC = () => {
     };
   }, [store.todayNodeId, store.version, store.db]);
 
-  const activeTasks = store.todayMiniTasks.filter(
-    (t) => t.status === 'suggested' || t.status === 'started'
-  );
+  const handleCapture = async (content: string) => {
+    if (!store.db || !store.todayNodeId) return;
+
+    // Detect any #tag tokens in the captured text
+    const tagMatches = content.match(/#([a-zA-Z0-9_\-]+)/g);
+    let cleanContent = content;
+    const tagNames: string[] = [];
+    if (tagMatches) {
+      for (const m of tagMatches) {
+        tagNames.push(m.slice(1));
+        cleanContent = cleanContent.replace(m, '').trim();
+      }
+    }
+
+    const created = await store.createNode({
+      parent_id: store.todayNodeId,
+      content: cleanContent || content,
+    });
+
+    for (const tName of tagNames) {
+      let tagDef = await store.db.tags.getTagByName(tName);
+      if (!tagDef) {
+        tagDef = await store.db.tags.createTag(tName, {
+          color: 'var(--accent)',
+          showCheckbox: tName.toLowerCase() === 'task',
+        });
+      }
+      if (tagDef) {
+        await store.applyTag(created.id, tagDef.id);
+      }
+    }
+  };
+
+  // Format date header
+  const today = new Date();
+  const weekdayName = today.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+  const formattedDate = today.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto font-sans text-[#ffffff]">
-      {/* Date Header */}
-      <div className="flex items-center justify-between mb-8 pb-4 border-b border-[#222222]">
-        <div>
-          <div className="text-[10px] font-mono uppercase tracking-[2px] text-[#555555] mb-1">
-            DAILY NOTE & COACH CONSOLE
+    <div className="flex-1 overflow-y-auto px-8 py-6 font-sans text-[var(--text-primary)]">
+      <div className="max-w-[760px] mx-auto space-y-6">
+        {/* 3.4 Page Header (Date / Title) */}
+        <div className="pb-4 border-b border-[var(--border-subtle)]">
+          <div className="text-[11px] font-mono uppercase tracking-[0.08em] text-[var(--text-muted)] mb-1 font-medium">
+            {weekdayName}
           </div>
-          <h1 className="text-3xl font-medium tracking-tight text-[#ffffff]">
-            {todayNode?.content || 'Today'}
+          <h1 className="text-[34px] font-semibold leading-[40px] tracking-[-0.01em] text-[var(--text-primary)] flex items-center space-x-2">
+            <span>{todayNode?.content || formattedDate}</span>
           </h1>
+
+          {/* One-line summary counts */}
+          <div className="text-[13px] text-[var(--text-muted)] mt-2 flex items-center space-x-2">
+            <span className="hover:text-[var(--accent)] cursor-pointer transition-colors">
+              {openTasksCount} open tasks
+            </span>
+            <span>·</span>
+            <span className="hover:text-[var(--accent)] cursor-pointer transition-colors">
+              {referencesCount} note references today
+            </span>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => store.runAiCoaching()}
-          disabled={store.isAiRunning}
-          className="h-8 px-3 flex items-center space-x-1.5 bg-[#111111] border border-[#333333] hover:border-[#ffffff] text-[#888888] hover:text-[#ffffff] text-[11px] font-mono uppercase tracking-[1px] cursor-pointer transition-colors duration-100"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-[#eab308]" strokeWidth={2} />
-          <span>{store.isAiRunning ? 'ANALYZING...' : 'REFRESH COACH'}</span>
-        </button>
-      </div>
-
-      {/* Hero Mini-Tasks Section */}
-      <section className="mb-10">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2 text-[10px] font-mono uppercase tracking-[2px] text-[#888888]">
-            <Sparkles className="w-3.5 h-3.5 text-[#eab308]" strokeWidth={2} />
-            <span>TODAY'S MINI-TASKS</span>
-          </div>
-
-          {store.lastDigestPayload && (
-            <button
-              type="button"
-              onClick={() => store.setDigestInspectOpen(true)}
-              className="text-[10px] font-mono text-[#555555] hover:text-[#888888] underline cursor-pointer"
-            >
-              What was sent?
-            </button>
-          )}
+        {/* 3.9 Docked Capture Bar */}
+        <div>
+          <CaptureBar
+            onCapture={handleCapture}
+            availableTags={availableTags}
+            placeholder="Capture anything…"
+          />
         </div>
 
-        {store.isAiRunning ? (
-          <div className="p-8 bg-[#111111] border border-[#222222] flex items-center justify-center">
-            <AppLoader mode="cursor" label="SYNTHESIZING KNOWLEDGE DIGEST" />
-          </div>
-        ) : activeTasks.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {activeTasks.slice(0, 4).map((task) => (
-              <MiniTaskCard
-                key={task.id}
-                task={task}
-                onStartTimer={() => store.updateMiniTaskStatus(task.id, 'started')}
-                onDone={() => store.updateMiniTaskStatus(task.id, 'done')}
-                onSnooze={() => store.updateMiniTaskStatus(task.id, 'snoozed')}
-                onDismiss={() => store.updateMiniTaskStatus(task.id, 'dismissed')}
-                onSaveAsNode={(t) => store.saveMiniTaskAsNode(t)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="p-6 bg-[#111111] border border-[#222222] flex items-center justify-between">
-            <div className="text-[12px] text-[#888888]">
-              No active mini-tasks for today. Capture notes or click refresh to generate recommendations.
-            </div>
-            <button
-              type="button"
-              onClick={() => store.runAiCoaching()}
-              className="h-7 px-3 bg-[#ffffff] text-[#000000] text-[10px] font-medium uppercase tracking-[1px] hover:bg-[#e0e0e0] cursor-pointer"
-            >
-              GENERATE
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Today's Daily Outliner Section */}
-      <section className="mb-12">
-        <div className="text-[10px] font-mono uppercase tracking-[2px] text-[#555555] mb-3">
-          OUTLINER NOTES
-        </div>
-        <div className="bg-[#0e0e0e] border border-[#222222] p-4 space-y-0.5">
+        {/* Outline Rows (Section 3.5 & Section 7 States Catalog) */}
+        <div className="space-y-1 pt-2">
           {todayChildren.map((child) => (
             <OutlinerNode
               key={child.id}
               node={child}
+              depth={0}
               focusedNodeId={focusedNodeId}
-              onFocusNode={setFocusedNodeId}
+              onFocusNode={(id) => setFocusedNodeId(id)}
+              onOpenNodePicker={onOpenNodePicker}
+              onOpenTagPicker={onOpenTagPicker}
+              onOpenFieldPicker={onOpenFieldPicker}
+              onEditSupertag={onEditSupertag}
             />
           ))}
 
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() =>
-                store
-                  .createChildNode(store.todayNodeId!)
-                  .then((c) => setFocusedNodeId(c.id))
-              }
-              className="text-[12px] font-mono text-[#555555] hover:text-[#ffffff] cursor-pointer uppercase tracking-[1px]"
-            >
-              + Add note to today
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Recently Edited Nodes */}
-      <section>
-        <div className="text-[10px] font-mono uppercase tracking-[2px] text-[#555555] mb-3">
-          RECENTLY EDITED
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {recentNodes.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => store.openNode(n.id)}
-              className="p-3 bg-[#111111] border border-[#222222] hover:border-[#444444] cursor-pointer flex items-center justify-between text-[13px] transition-colors duration-100"
-            >
-              <span className="font-medium text-[#ffffff] truncate">
-                {n.content || 'Untitled'}
-              </span>
-              <span className="text-[10px] font-mono text-[#555555]">
-                {new Date(n.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
+          {/* Empty day state (Section 7) */}
+          {todayChildren.length === 0 && (
+            <div className="p-8 border border-dashed border-[var(--border-subtle)] rounded-[10px] text-center text-[var(--text-muted)] text-[14px]">
+              Start writing, or press <kbd className="font-mono text-[12px] bg-[var(--bg-raised)] px-1.5 py-0.5 rounded-[4px] border border-[var(--border-subtle)] text-[var(--text-primary)]">C</kbd> to capture
             </div>
-          ))}
+          )}
         </div>
-      </section>
+      </div>
     </div>
   );
 };

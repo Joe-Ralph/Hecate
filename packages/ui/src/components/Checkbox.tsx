@@ -5,6 +5,7 @@ export interface CheckboxProps {
   onChange: (checked: boolean) => void;
   className?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
 export const Checkbox: React.FC<CheckboxProps> = ({
@@ -12,12 +13,14 @@ export const Checkbox: React.FC<CheckboxProps> = ({
   onChange,
   className = '',
   disabled = false,
+  ariaLabel = 'Toggle completion',
 }) => {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
@@ -25,13 +28,40 @@ export const Checkbox: React.FC<CheckboxProps> = ({
           onChange(!checked);
         }
       }}
-      className={`w-[14px] h-[14px] min-w-[14px] min-h-[14px] flex items-center justify-center border transition-colors duration-100 select-none ${
-        checked
-          ? 'border-[#338833] bg-transparent'
-          : 'border-[#333333] hover:border-[#888888] bg-transparent'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${className}`}
+      onKeyDown={(e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!disabled) {
+            onChange(!checked);
+          }
+        }
+      }}
+      className={`min-w-[32px] min-h-[32px] flex items-center justify-center p-1 cursor-pointer select-none group transition-opacity ${
+        disabled ? 'opacity-40 cursor-not-allowed' : ''
+      } ${className}`}
     >
-      {checked && <div className="w-[6px] h-[6px] bg-[#338833]" />}
+      <div
+        className={`w-[18px] h-[18px] rounded-[5px] flex items-center justify-center transition-colors duration-120 ${
+          checked
+            ? 'bg-[var(--green)] border border-[var(--green)]'
+            : 'border-[1.5px] border-[#6f695f] hover:border-[var(--green)] bg-transparent'
+        }`}
+      >
+        {checked && (
+          <svg
+            className="w-3 h-3 text-[var(--bg-app)]"
+            viewBox="0 0 14 14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M2.5 7.5L5.5 10.5L11.5 3.5" />
+          </svg>
+        )}
+      </div>
     </button>
   );
 };

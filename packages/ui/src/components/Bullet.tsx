@@ -2,6 +2,7 @@ import React from 'react';
 
 export interface BulletProps {
   hasChildren?: boolean;
+  isCollapsed?: boolean;
   onClick?: (e: React.MouseEvent) => void;
   onDragStart?: (e: React.DragEvent) => void;
   draggable?: boolean;
@@ -11,11 +12,12 @@ export interface BulletProps {
 
 export const Bullet: React.FC<BulletProps> = ({
   hasChildren = false,
+  isCollapsed = false,
   onClick,
   onDragStart,
   draggable = true,
   className = '',
-  title = 'Click to zoom, drag to move',
+  title = 'Click to zoom, Cmd+Click to open in side panel, drag to move',
 }) => {
   return (
     <div
@@ -31,13 +33,15 @@ export const Bullet: React.FC<BulletProps> = ({
           onClick?.(e as any);
         }
       }}
-      className={`w-4 h-4 flex items-center justify-center cursor-pointer select-none group border border-transparent hover:border-[#ffffff] transition-colors duration-150 ${className}`}
+      className={`w-5 h-5 flex items-center justify-center cursor-pointer select-none group shrink-0 ${className}`}
     >
       <div
-        className={`w-[5px] h-[5px] transition-colors duration-150 ${
+        className={`w-[6px] h-[6px] rounded-full transition-all duration-120 ${
           hasChildren
-            ? 'bg-[#ffffff] group-hover:bg-[#ffffff]'
-            : 'bg-[#888888] group-hover:bg-[#ffffff]'
+            ? isCollapsed
+              ? 'bg-[var(--text-primary)] ring-2 ring-[var(--accent)]/40'
+              : 'bg-[var(--text-secondary)] group-hover:bg-[var(--accent)]'
+            : 'bg-[var(--text-faint)] group-hover:bg-[var(--text-primary)]'
         }`}
       />
     </div>

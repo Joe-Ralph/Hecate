@@ -1,12 +1,14 @@
 import React, { useState, useRef } from 'react';
-import { Link2 } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 export interface ReferenceChipProps {
   targetId: string;
   title: string;
   previewContent?: string;
   previewChildren?: string[];
+  loadPreview?: (targetId: string) => Promise<{ content: string; children: string[] }>;
   onClick?: (targetId: string, openInSidePanel: boolean) => void;
+  variant?: 'inline' | 'chip';
   className?: string;
 }
 
@@ -15,16 +17,25 @@ export const ReferenceChip: React.FC<ReferenceChipProps> = ({
   title,
   previewContent,
   previewChildren = [],
+  loadPreview,
   onClick,
+  variant = 'inline',
   className = '',
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [loadedPreview, setLoadedPreview] = useState<{
+    content: string;
+    children: string[];
+  } | null>(null);
   const hoverTimeoutRef = useRef<any>(null);
 
   const handleMouseEnter = () => {
     hoverTimeoutRef.current = setTimeout(() => {
       setHovered(true);
-    }, 250);
+      if (!previewContent && !loadedPreview && loadPreview) {
+        loadPreview(targetId).then(setLoadedPreview).catch(() => {});
+      }
+    }, 300);
   };
 
   const handleMouseLeave = () => {
@@ -32,9 +43,14 @@ export const ReferenceChip: React.FC<ReferenceChipProps> = ({
     setHovered(false);
   };
 
+  const displayTitle = title || 'Untitled Node';
+  const effectivePreviewContent = previewContent ?? loadedPreview?.content;
+  const effectivePreviewChildren =
+    previewChildren.length > 0 ? previewChildren : (loadedPreview?.children ?? []);
+
   return (
     <span
-      className={`relative inline-flex items-center align-middle mx-1 select-none ${className}`}
+      className={`relative inline-flex items-center align-baseline select-none min-w-0 max-w-full ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -45,29 +61,35 @@ export const ReferenceChip: React.FC<ReferenceChipProps> = ({
           const isMetaOrCtrl = e.metaKey || e.ctrlKey;
           onClick?.(targetId, isMetaOrCtrl);
         }}
-        className="h-[22px] px-1.5 inline-flex items-center space-x-1 bg-[#141414] border border-[#333333] hover:border-[#ffffff] transition-colors duration-150 cursor-pointer text-[#ffffff]"
-        title="Click to navigate, Cmd+Click to open in side panel"
+        className={
+          variant === 'chip'
+            ? 'inline-flex items-center gap-1 min-w-0 max-w-full text-[10px] font-mono text-[var(--accent)] hover:text-[var(--text-primary)] bg-[var(--bg-raised)] hover:bg-[var(--bg-hover)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)] hover:border-[var(--border-accent)] transition-colors cursor-pointer'
+            : 'inline-flex items-center min-w-0 max-w-full text-[var(--accent)] hover:text-[var(--text-primary)] underline decoration-[var(--accent-decoration)] decoration-dashed underline-offset-4 font-normal transition-colors duration-120 cursor-pointer'
+        }
+        title={`${displayTitle} (Click to open, Cmd+Click for side panel)`}
       >
-        <Link2 className="w-[11px] h-[11px] text-[#888888]" strokeWidth={2} />
-        <span className="text-[13px] font-medium leading-none">{title || 'Untitled Node'}</span>
+        <span className="truncate min-w-0">{displayTitle}</span>
+        {variant === 'chip' && (
+          <ArrowUpRight className="w-2.5 h-2.5 text-[var(--text-faint)] shrink-0" />
+        )}
       </button>
 
-      {hovered && (previewContent || previewChildren.length > 0) && (
+      {hovered && (effectivePreviewContent || effectivePreviewChildren.length > 0) && (
         <div
-          className="absolute z-50 left-0 bottom-full mb-1.5 w-64 bg-[#0a0a0a] border border-[#333333] p-2.5 font-sans shadow-2xl pointer-events-none"
+          className="absolute z-50 left-0 bottom-full mb-2 w-72 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-[10px] p-3 font-sans shadow-[0_12px_40px_rgba(0,0,0,0.5)] pointer-events-none animate-in fade-in duration-140"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-[10px] text-[#555555] font-mono uppercase tracking-[1.5px] border-b border-[#222222] pb-1 mb-1.5">
-            NODE PREVIEW
+          <div className="text-[11px] text-[var(--text-muted)] font-mono uppercase tracking-wider border-b border-[var(--border-subtle)] pb-1 mb-2">
+            Reference Preview
           </div>
-          <div className="text-[13px] text-[#ffffff] font-medium mb-1">
-            {previewContent || title}
+          <div className="text-[14px] text-[var(--text-primary)] font-medium mb-1">
+            {effectivePreviewContent || displayTitle}
           </div>
-          {previewChildren.length > 0 && (
-            <div className="space-y-1 mt-2 pt-1 border-t border-[#222222]">
-              {previewChildren.slice(0, 3).map((child, idx) => (
-                <div key={idx} className="flex items-center space-x-1.5 text-[11px] text-[#888888]">
-                  <div className="w-1 h-1 bg-[#555555]" />
+          {effectivePreviewChildren.length > 0 && (
+            <div className="space-y-1.5 mt-2.5 pt-2 border-t border-[var(--border-subtle)]">
+              {effectivePreviewChildren.slice(0, 5).map((child, idx) => (
+                <div key={idx} className="flex items-center space-x-2 text-[12px] text-[var(--text-muted)]">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[var(--text-faint)]" />
                   <span className="truncate">{child}</span>
                 </div>
               ))}

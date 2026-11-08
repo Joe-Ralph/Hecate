@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { UndoStack, Operation } from '../src/operations/undoStack';
 
 describe('Undo / Redo Stack', () => {
-  it('records operations and inverts them on undo', () => {
+  it('returns the original operation on undo (caller applies its before-state)', () => {
     const stack = new UndoStack(200);
 
     const op1: Operation = {
@@ -16,13 +16,9 @@ describe('Undo / Redo Stack', () => {
     expect(stack.canUndo()).toBe(true);
     expect(stack.canRedo()).toBe(false);
 
-    const inverted = stack.undo();
-    expect(inverted).toBeDefined();
-    expect(inverted?.type).toBe('updateContent');
-    if (inverted?.type === 'updateContent') {
-      expect(inverted.before).toBe('Hello World');
-      expect(inverted.after).toBe('Hello');
-    }
+    // undo() hands back the original op; undoing applies op.before.
+    const undone = stack.undo();
+    expect(undone).toEqual(op1);
 
     expect(stack.canUndo()).toBe(false);
     expect(stack.canRedo()).toBe(true);

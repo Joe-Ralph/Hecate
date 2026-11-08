@@ -82,7 +82,8 @@ export class UndoStack {
     const op = this.undoStack.pop();
     if (!op) return null;
     this.redoStack.push(op);
-    return this.invert(op);
+    // Return the original operation; callers apply its before-state to undo.
+    return op;
   }
 
   redo(): Operation | null {

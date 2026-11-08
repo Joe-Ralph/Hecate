@@ -36,7 +36,7 @@ export function compileQueryToSql(
   }
 
   function compileClause(clause: QueryClause): string {
-    if ('op' in clause && Array.isArray((clause as any).clauses)) {
+    if ('clauses' in clause && Array.isArray((clause as any).clauses)) {
       const groupOp = (clause as any).op as QueryOp;
       const subClauses = (clause as any).clauses as QueryClause[];
       if (subClauses.length === 0) return '1=1';
@@ -49,6 +49,10 @@ export function compileQueryToSql(
       const sqlOp = groupOp === 'OR' ? ' OR ' : ' AND ';
       const compiled = subClauses.map((c) => `(${compileClause(c)})`).join(sqlOp);
       return compiled;
+    }
+
+    if (!('type' in clause)) {
+      return '1=1';
     }
 
     switch (clause.type) {

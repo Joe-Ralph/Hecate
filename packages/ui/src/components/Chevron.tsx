@@ -26,12 +26,12 @@ export const Chevron: React.FC<ChevronProps> = ({
         e.stopPropagation();
         onClick(e);
       }}
-      className={`w-[14px] h-[14px] flex items-center justify-center text-[#555555] hover:text-[#ffffff] transition-transform duration-100 ease-out ${className}`}
+      className={`w-[14px] h-[14px] flex items-center justify-center text-[var(--text-faint)] hover:text-[var(--text-primary)] transition-transform duration-100 ease-out ${className}`}
       title={expanded ? 'Collapse' : 'Expand'}
     >
       <ChevronRight
         className={`w-3.5 h-3.5 transition-transform duration-100 ${
-          expanded ? 'rotate-90 text-[#888888]' : ''
+          expanded ? 'rotate-90 text-[var(--text-muted)]' : ''
         }`}
         strokeWidth={2}
       />

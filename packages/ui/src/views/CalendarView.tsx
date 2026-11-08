@@ -3,18 +3,23 @@ import { NodeRecord, formatDate } from '@hecate/core';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface CalendarViewProps {
-  nodes: NodeRecord[];
-  getNodeDate: (node: NodeRecord) => string | null; // returns YYYY-MM-DD
+  nodes?: NodeRecord[];
+  getNodeDate?: (node: NodeRecord) => string | null; // returns YYYY-MM-DD
   onNodeClick?: (nodeId: string) => void;
   onDayClick?: (dateIso: string) => void;
+  onNodeReschedule?: (nodeId: string, dateIso: string) => void;
   className?: string;
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
-  nodes,
-  getNodeDate,
+  nodes = [],
+  getNodeDate = (n) => {
+    const match = n.content.match(/\[\[date:(\d{4}-\d{2}-\d{2})\]\]/);
+    return match ? match[1] : null;
+  },
   onNodeClick,
   onDayClick,
+  onNodeReschedule,
   className = '',
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -37,8 +42,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   // Group nodes by date
   const nodesByDate = new Map<string, NodeRecord[]>();
-  for (const n of nodes) {
-    const d = getNodeDate(n);
+  for (const n of nodes || []) {
+    const d = getNodeDate ? getNodeDate(n) : null;
     if (d) {
       if (!nodesByDate.has(d)) nodesByDate.set(d, []);
       nodesByDate.get(d)!.push(n);
@@ -48,17 +53,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const daysOfWeek = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
   return (
-    <div className={`w-full bg-[#0a0a0a] border border-[#222222] font-sans ${className}`}>
+    <div className={`w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] font-sans ${className}`}>
       {/* Calendar Header */}
-      <div className="flex items-center justify-between p-3 border-b border-[#222222] bg-[#111111]">
+      <div className="flex items-center justify-between p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
         <div className="flex items-center space-x-3">
-          <span className="text-[14px] font-medium uppercase tracking-[1.5px] text-[#ffffff]">
+          <span className="text-[14px] font-medium uppercase tracking-[1.5px] text-[var(--text-primary)]">
             {monthNames[month]} {year}
           </span>
           <button
             type="button"
             onClick={jumpToday}
-            className="text-[10px] font-mono text-[#888888] hover:text-[#ffffff] px-2 py-0.5 border border-[#333333] hover:border-[#ffffff] cursor-pointer uppercase tracking-[1px]"
+            className="text-[10px] font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] px-2 py-0.5 border border-[var(--border-strong)] hover:border-[var(--text-primary)] cursor-pointer uppercase tracking-[1px]"
           >
             TODAY
           </button>
@@ -68,14 +73,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <button
             type="button"
             onClick={prevMonth}
-            className="p-1 text-[#888888] hover:text-[#ffffff] hover:bg-[#1a1a1a] cursor-pointer"
+            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" strokeWidth={2} />
           </button>
           <button
             type="button"
             onClick={nextMonth}
-            className="p-1 text-[#888888] hover:text-[#ffffff] hover:bg-[#1a1a1a] cursor-pointer"
+            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" strokeWidth={2} />
           </button>
@@ -83,7 +88,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       </div>
 
       {/* Days of Week Row */}
-      <div className="grid grid-cols-7 border-b border-[#222222] bg-[#111111] text-center text-[10px] font-mono uppercase tracking-[1.5px] text-[#555555] py-2">
+      <div className="grid grid-cols-7 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] text-center text-[10px] font-mono uppercase tracking-[1.5px] text-[var(--text-faint)] py-2">
         {daysOfWeek.map((d) => (
           <div key={d}>{d}</div>
         ))}
@@ -93,7 +98,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       <div className="grid grid-cols-7 auto-rows-fr">
         {/* Leading empty days */}
         {Array.from({ length: startingDay }).map((_, i) => (
-          <div key={`empty-${i}`} className="min-h-[100px] border-r border-b border-[#222222] bg-[#0c0c0c]/40" />
+          <div key={`empty-${i}`} className="min-h-[100px] border-r border-b border-[var(--border-subtle)] bg-[var(--bg-track)]/40" />
         ))}
 
         {/* Days of the month */}
@@ -108,22 +113,36 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             <div
               key={dayNum}
               onClick={() => onDayClick?.(dateIso)}
-              className={`min-h-[100px] border-r border-b border-[#222222] p-1.5 flex flex-col justify-between hover:bg-[#111111] transition-colors duration-100 cursor-pointer ${
-                isToday ? 'bg-[#141414]' : ''
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('application/x-hecate-node')) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDrop={(e) => {
+                const draggedId = e.dataTransfer.getData('application/x-hecate-node');
+                if (draggedId) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onNodeReschedule?.(draggedId, dateIso);
+                }
+              }}
+              className={`min-h-[100px] border-r border-b border-[var(--border-subtle)] p-1.5 flex flex-col justify-between hover:bg-[var(--bg-surface)] transition-colors duration-100 cursor-pointer ${
+                isToday ? 'bg-[var(--bg-active)]' : ''
               }`}
             >
               <div className="flex items-center justify-between mb-1">
                 <span
                   className={`text-[11px] font-mono ${
                     isToday
-                      ? 'text-[#ffffff] font-medium px-1 bg-[#222222]'
-                      : 'text-[#555555]'
+                      ? 'text-[var(--text-primary)] font-medium px-1 bg-[var(--border-subtle)]'
+                      : 'text-[var(--text-faint)]'
                   }`}
                 >
                   {dayNum}
                 </span>
                 {dayNodes.length > 0 && (
-                  <span className="text-[9px] font-mono text-[#555555]">
+                  <span className="text-[9px] font-mono text-[var(--text-faint)]">
                     {dayNodes.length}
                   </span>
                 )}
@@ -134,18 +153,24 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 {dayNodes.slice(0, 3).map((node) => (
                   <div
                     key={node.id}
+                    draggable={Boolean(onNodeReschedule)}
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      e.dataTransfer.setData('application/x-hecate-node', node.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       onNodeClick?.(node.id);
                     }}
-                    className="px-1.5 py-0.5 bg-[#161616] border border-[#333333] hover:border-[#ffffff] text-[11px] text-[#ffffff] truncate font-sans cursor-pointer select-none"
+                    className="px-1.5 py-0.5 bg-[var(--bg-raised)] border border-[var(--border-strong)] hover:border-[var(--text-primary)] text-[11px] text-[var(--text-primary)] truncate font-sans cursor-pointer select-none"
                     title={node.content}
                   >
                     {node.content || 'Untitled'}
                   </div>
                 ))}
                 {dayNodes.length > 3 && (
-                  <div className="text-[9px] font-mono text-[#888888] pl-1">
+                  <div className="text-[9px] font-mono text-[var(--text-muted)] pl-1">
                     +{dayNodes.length - 3} more
                   </div>
                 )}

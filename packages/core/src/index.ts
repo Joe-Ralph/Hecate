@@ -6,4 +6,6 @@ export * from './paste';
 export * from './query';
 export * from './operations/supertags';
 export * from './operations/undoStack';
+export * from './operations/commands';
+export * from './operations/transfer';
 export * from './date/natural';

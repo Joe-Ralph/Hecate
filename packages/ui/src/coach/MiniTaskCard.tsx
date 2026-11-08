@@ -26,44 +26,44 @@ export const MiniTaskCard: React.FC<MiniTaskCardProps> = ({
 
   return (
     <>
-      <div className={`bg-[#111111] border border-[#333333] hover:border-[#555555] p-5 text-[#ffffff] font-sans relative transition-colors duration-150 ${className}`}>
+      <div className={`bg-[var(--bg-surface)] border border-[var(--border-strong)] hover:border-[var(--text-faint)] p-5 text-[var(--text-primary)] font-sans relative transition-colors duration-150 ${className}`}>
         {/* Top Meta Row */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
-            <span className="text-[10px] font-mono uppercase tracking-[2px] text-[#888888] px-1.5 py-0.5 bg-[#161616] border border-[#222222]">
+            <span className="text-[10px] font-mono uppercase tracking-[2px] text-[var(--text-muted)] px-1.5 py-0.5 bg-[var(--bg-raised)] border border-[var(--border-subtle)]">
               {task.category}
             </span>
-            <span className="text-[11px] font-mono text-[#555555] flex items-center space-x-1">
+            <span className="text-[11px] font-mono text-[var(--text-faint)] flex items-center space-x-1">
               <Clock className="w-3 h-3" strokeWidth={2} />
               <span>{task.duration_min} MIN</span>
             </span>
           </div>
 
-          <div className="text-[10px] font-mono uppercase tracking-[1px] text-[#555555]">
+          <div className="text-[10px] font-mono uppercase tracking-[1px] text-[var(--text-faint)]">
             MINI-TASK
           </div>
         </div>
 
         {/* Task Title */}
-        <h4 className="text-[17px] font-medium leading-snug mb-2 text-[#ffffff]">
+        <h4 className="text-[17px] font-medium leading-snug mb-2 text-[var(--text-primary)]">
           {task.title}
         </h4>
 
         {/* Rationale Quote */}
         {task.rationale && (
-          <p className="text-[12px] text-[#888888] italic mb-4 pl-2 border-l border-[#333333]">
+          <p className="text-[12px] text-[var(--text-muted)] italic mb-4 pl-2 border-l border-[var(--border-strong)]">
             "{task.rationale}"
           </p>
         )}
 
         {/* Actions Row */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#222222]">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[var(--border-subtle)]">
           <div className="flex items-center space-x-2">
             {/* Start Timer */}
             <button
               type="button"
               onClick={() => setShowTimer(true)}
-              className="h-7 px-2.5 flex items-center space-x-1.5 bg-[#ffffff] text-[#000000] text-[10px] font-medium uppercase tracking-[1.5px] hover:bg-[#e0e0e0] active:scale-98 cursor-pointer transition-transform duration-100"
+              className="h-7 px-2.5 flex items-center space-x-1.5 bg-[var(--text-primary)] text-[#000000] text-[10px] font-medium uppercase tracking-[1.5px] hover:bg-[var(--text-primary)] active:scale-98 cursor-pointer transition-transform duration-100"
             >
               <Play className="w-3 h-3 fill-current" strokeWidth={2} />
               <span>START ({task.duration_min}M)</span>
@@ -73,7 +73,7 @@ export const MiniTaskCard: React.FC<MiniTaskCardProps> = ({
             <button
               type="button"
               onClick={() => onDone(task)}
-              className="h-7 px-2.5 flex items-center space-x-1.5 bg-[#161616] border border-[#338833] hover:bg-[#338833]/15 text-[#338833] text-[10px] font-medium uppercase tracking-[1.5px] active:scale-98 cursor-pointer transition-colors duration-100"
+              className="h-7 px-2.5 flex items-center space-x-1.5 bg-[var(--bg-raised)] border border-[var(--green)] hover:bg-[var(--green)]/15 text-[var(--green)] text-[10px] font-medium uppercase tracking-[1.5px] active:scale-98 cursor-pointer transition-colors duration-100"
             >
               <Check className="w-3 h-3" strokeWidth={2} />
               <span>DONE</span>
@@ -86,7 +86,7 @@ export const MiniTaskCard: React.FC<MiniTaskCardProps> = ({
               type="button"
               onClick={() => onSnooze(task)}
               title="Snooze until tomorrow"
-              className="h-7 px-2 flex items-center space-x-1 text-[#888888] hover:text-[#ffffff] hover:bg-[#1a1a1a] text-[10px] font-mono uppercase tracking-[1px] cursor-pointer"
+              className="h-7 px-2 flex items-center space-x-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] text-[10px] font-mono uppercase tracking-[1px] cursor-pointer"
             >
               <span>SNOOZE</span>
             </button>
@@ -96,7 +96,7 @@ export const MiniTaskCard: React.FC<MiniTaskCardProps> = ({
               type="button"
               onClick={() => onSaveAsNode(task)}
               title="Save as #task node"
-              className="h-7 px-2 flex items-center space-x-1 text-[#888888] hover:text-[#ffffff] hover:bg-[#1a1a1a] text-[10px] font-mono uppercase tracking-[1px] cursor-pointer"
+              className="h-7 px-2 flex items-center space-x-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] text-[10px] font-mono uppercase tracking-[1px] cursor-pointer"
             >
               <BookmarkPlus className="w-3 h-3" strokeWidth={2} />
               <span>SAVE</span>
@@ -107,7 +107,7 @@ export const MiniTaskCard: React.FC<MiniTaskCardProps> = ({
               type="button"
               onClick={() => onDismiss(task)}
               title="Not for me (reduces suggestions in this category)"
-              className="h-7 px-1.5 flex items-center text-[#555555] hover:text-[#cc3333] hover:bg-[#1a1a1a] cursor-pointer"
+              className="h-7 px-1.5 flex items-center text-[var(--text-faint)] hover:text-[var(--red)] hover:bg-[var(--bg-hover)] cursor-pointer"
             >
               <ThumbsDown className="w-3 h-3" strokeWidth={2} />
             </button>
